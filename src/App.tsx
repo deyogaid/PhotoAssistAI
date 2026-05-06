@@ -23,12 +23,19 @@ import {
   History,
   LogOut,
   LogIn,
+  Maximize,
   Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { PromptInput, GenerationResult, PhotoType } from './types';
-import { PRESETS, PHOTO_TYPES, STYLE_OPTIONS, CONDITION_OPTIONS } from './constants';
-import { generatePhotoGuidance, analyzeImage } from './services/gemini';
+import { 
+  PRESETS, 
+  PHOTO_TYPES, 
+  STYLE_OPTIONS, 
+  CONDITION_OPTIONS, 
+  ASPECT_RATIO_OPTIONS 
+} from './constants';
+import { generateSmartPrompt, generateImageFromPrompt, analyzeImage } from './services/gemini';
 import { auth, db } from './lib/firebase';
 import { 
   signInWithPopup, 
@@ -61,10 +68,13 @@ export default function App() {
     conditions: [],
     targetStyle: 'studio-minimalist',
     intensity: 50,
+    aspectRatio: '1:1',
   });
 
   const [showStyleGallery, setShowStyleGallery] = useState(false);
   const [showPresets, setShowPresets] = useState(false);
+  const [openFormSections, setOpenFormSections] = useState<string[]>(['type', 'ratio']);
+  const [openResultSections, setOpenResultSections] = useState<string[]>([]);
 
   const [loading, setLoading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
@@ -76,6 +86,12 @@ export default function App() {
   const [history, setHistory] = useState<GenerationResult[]>([]);
   const [userPresets, setUserPresets] = useState<any[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [refinementFeedback, setRefinementFeedback] = useState('');
+  const [refining, setRefining] = useState(false);
+
+  const [draftPrompt, setDraftPrompt] = useState('');
+  const [draftDirection, setDraftDirection] = useState('');
+  const [preparingPrompt, setPreparingPrompt] = useState(false);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
@@ -204,29 +220,91 @@ export default function App() {
     reader.readAsDataURL(file);
   };
 
+  const createThumbnail = (base64: string, maxWidth = 400): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const scale = maxWidth / img.width;
+        canvas.width = maxWidth;
+        canvas.height = img.height * scale;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', 0.7));
+      };
+      img.src = base64;
+    });
+  };
+
+  const handlePreparePrompt = async () => {
+    if (!user) {
+      alert("Silahkan login untuk melanjutkan.");
+      return;
+    }
+
+    setPreparingPrompt(true);
+    setResult(null); // Clear previous result
+    try {
+      const gInput = { ...input, subjectCount: input.subjectCount || 1 };
+      const { prompt, creativeDirection } = await generateSmartPrompt(gInput, uploadedImage);
+      setDraftPrompt(prompt);
+      setDraftDirection(creativeDirection);
+    } catch (error) {
+      console.error("Prompt preparation failed", error);
+      alert("Gagal menyiapkan prompt. Coba lagi.");
+    } finally {
+      setPreparingPrompt(false);
+    }
+  };
+
   const handleGenerate = async () => {
     if (!user) {
       alert("Silahkan login untuk menyimpan history.");
       return;
     }
 
+    if (!draftPrompt) {
+      await handlePreparePrompt();
+      return;
+    }
+
     setLoading(true);
+    setRefinementFeedback('');
     try {
       const gInput = { ...input, subjectCount: input.subjectCount || 1 };
-      const res = await generatePhotoGuidance(gInput, uploadedImage);
+      const imageUrl = await generateImageFromPrompt(draftPrompt, input.aspectRatio, uploadedImage);
+      
+      const res: GenerationResult = {
+        prompt: draftPrompt,
+        creativeDirection: draftDirection,
+        imageUrl,
+        input: gInput
+      };
+      
       setResult(res);
 
       try {
-        // Exclude large base64 image from Firestore to avoid 1MB limit
-        const { imageUrl, ...restOfResult } = res;
+        // Create a smaller thumbnail specifically for database history
+        let historyImageUrl = '';
+        if (res.imageUrl) {
+          try {
+            historyImageUrl = await createThumbnail(res.imageUrl);
+          } catch (thumbErr) {
+            console.error("Thumbnail failed", thumbErr);
+          }
+        }
+
         await addDoc(collection(db, 'generations'), {
           userId: user.uid,
           input: gInput,
-          result: restOfResult,
+          result: {
+            ...res,
+            imageUrl: historyImageUrl // Store ONLY the thumbnail in DB
+          },
           createdAt: serverTimestamp()
         });
 
-        // Auto-save as preset if combination is unique
+        // Auto-save as preset
         const comboExists = [
           ...PRESETS.map(p => p.config), 
           ...userPresets.map(up => up.config)
@@ -253,9 +331,54 @@ export default function App() {
       }
 
     } catch (error) {
-      alert("Terjadi kesalahan saat generate. Mohon coba lagi.");
+      alert("Terjadi kesalahan saat generate image. Mohon coba lagi.");
     } finally {
       setLoading(false);
+      setDraftPrompt(''); // Clear draft after successful generation
+      setDraftDirection('');
+    }
+  };
+
+  const handleRefine = async () => {
+    if (!result || !refinementFeedback.trim()) return;
+    
+    setRefining(true);
+    try {
+      const res = await generatePhotoGuidance(
+        input, 
+        uploadedImage, 
+        result, 
+        refinementFeedback
+      );
+      setResult(res);
+      setRefinementFeedback('');
+
+      // Save refined result to history as well
+      try {
+        let historyImageUrl = '';
+        if (res.imageUrl) {
+          try {
+            historyImageUrl = await createThumbnail(res.imageUrl);
+          } catch (thumbErr) {
+            console.error("Thumbnail failed", thumbErr);
+          }
+        }
+        await addDoc(collection(db, 'generations'), {
+          userId: user?.uid,
+          input: input,
+          result: {
+            ...res,
+            imageUrl: historyImageUrl
+          },
+          createdAt: serverTimestamp()
+        });
+      } catch (e) {
+        console.error("Failed to save refined result", e);
+      }
+    } catch (error) {
+      alert("Gagal memperbarui hasil.");
+    } finally {
+      setRefining(false);
     }
   };
 
@@ -275,6 +398,12 @@ export default function App() {
     }));
   };
 
+  const toggleFormSection = (id: string) => {
+    setOpenFormSections(prev => 
+      prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]
+    );
+  };
+
   const toggleCondition = (val: string) => {
     setInput(prev => ({
       ...prev,
@@ -282,6 +411,12 @@ export default function App() {
         ? prev.conditions.filter(c => c !== val)
         : [...prev.conditions, val]
     }));
+  };
+
+  const toggleResultSection = (id: string) => {
+    setOpenResultSections(prev => 
+      prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]
+    );
   };
 
   const copyToClipboard = (text: string) => {
@@ -471,32 +606,102 @@ export default function App() {
                 </AnimatePresence>
               </section>
 
-              {/* Form Controls */}
-              <div className="space-y-6">
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2 text-slate-600">
-                    <Camera size={18} />
-                    <label className="text-sm font-semibold">Jenis Foto</label>
+               {/* Form Controls */}
+              <div className="space-y-2">
+                {/* Jenis Foto Section */}
+                <div className="border-b border-slate-100 pb-2">
+                <div 
+                  onClick={() => toggleFormSection('type')}
+                  className="w-full flex items-center justify-between py-3 group cursor-pointer"
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => e.key === 'Enter' && toggleFormSection('type')}
+                >
+                  <div className="flex items-center gap-3 text-slate-700">
+                    <div className={`p-1.5 rounded-lg transition-colors ${openFormSections.includes('type') ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-50 text-slate-400 group-hover:text-slate-600'}`}>
+                      <Camera size={16} />
+                    </div>
+                    <span className="text-sm font-bold">Jenis Foto</span>
                   </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    {PHOTO_TYPES.map(t => (
-                      <button
-                        key={t.value}
-                        onClick={() => setInput({ ...input, photoType: t.value as PhotoType })}
-                        className={`px-3 py-2 text-xs rounded-lg border transition-all ${
-                          input.photoType === t.value 
-                          ? 'bg-slate-900 border-slate-900 text-white shadow-md' 
-                          : 'bg-white border-slate-200 hover:border-slate-300'
-                        }`}
-                        id={`type-${t.value}`}
+                  <ChevronRight size={16} className={`text-slate-300 transition-transform ${openFormSections.includes('type') ? 'rotate-90' : ''}`} />
+                </div>
+                  
+                  <AnimatePresence>
+                    {openFormSections.includes('type') && (
+                      <motion.div 
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="overflow-hidden"
                       >
-                        {t.label}
-                      </button>
-                    ))}
-                  </div>
+                        <div className="grid grid-cols-3 gap-2 pb-4 pt-1">
+                          {PHOTO_TYPES.map(t => (
+                            <button
+                              key={t.value}
+                              onClick={() => setInput({ ...input, photoType: t.value as PhotoType })}
+                              className={`px-3 py-2 text-[11px] rounded-lg border transition-all ${
+                                input.photoType === t.value 
+                                ? 'bg-slate-900 border-slate-900 text-white shadow-md' 
+                                : 'bg-white border-slate-200 hover:border-slate-300'
+                              }`}
+                            >
+                              {t.label}
+                            </button>
+                          ))}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                {/* Aspect Ratio Section */}
+                <div className="border-b border-slate-100 pb-2">
+                <div 
+                  onClick={() => toggleFormSection('ratio')}
+                  className="w-full flex items-center justify-between py-3 group cursor-pointer"
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => e.key === 'Enter' && toggleFormSection('ratio')}
+                >
+                  <div className="flex items-center gap-3 text-slate-700">
+                    <div className={`p-1.5 rounded-lg transition-colors ${openFormSections.includes('ratio') ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-50 text-slate-400 group-hover:text-slate-600'}`}>
+                      <Maximize size={16} />
+                    </div>
+                    <span className="text-sm font-bold">Aspect Ratio</span>
+                  </div>
+                  <ChevronRight size={16} className={`text-slate-300 transition-transform ${openFormSections.includes('ratio') ? 'rotate-90' : ''}`} />
+                </div>
+                  
+                  <AnimatePresence>
+                    {openFormSections.includes('ratio') && (
+                      <motion.div 
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="grid grid-cols-4 gap-2 pb-4 pt-1">
+                          {ASPECT_RATIO_OPTIONS.map((opt) => (
+                            <button
+                              key={opt.value}
+                              onClick={() => setInput({ ...input, aspectRatio: opt.value as any })}
+                              className={`py-2 px-1 rounded-xl text-[10px] sm:text-[11px] font-bold transition-all border ${
+                                input.aspectRatio === opt.value
+                                ? 'bg-emerald-600 border-emerald-600 text-white shadow-md'
+                                : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'
+                              }`}
+                              title={opt.description}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 pt-2">
                   <div className="space-y-2">
                     <div className="flex items-center gap-2 text-slate-600">
                       <Users size={18} />
@@ -531,10 +736,12 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-slate-600">
-                    <Wind size={18} />
-                    <label className="text-sm font-semibold">Masalah di Foto Mentah</label>
+                <div className="space-y-3 pb-2">
+                  <div className="flex items-center gap-2 text-slate-700 py-3">
+                    <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600">
+                      <Wind size={16} />
+                    </div>
+                    <label className="text-sm font-bold">Masalah di Foto Mentah</label>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {CONDITION_OPTIONS.map(c => (
@@ -583,10 +790,12 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-slate-600">
-                    <Zap size={18} />
-                    <label className="text-sm font-semibold">Style Tujuan</label>
+                <div className="space-y-3 pb-2 border-b border-slate-100">
+                  <div className="flex items-center gap-2 text-slate-700 py-3">
+                    <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600">
+                      <Zap size={16} />
+                    </div>
+                    <label className="text-sm font-bold">Style Tujuan</label>
                   </div>
                   
                   <button
@@ -609,8 +818,8 @@ export default function App() {
                   </button>
                 </div>
 
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between text-sm font-semibold text-slate-600">
+                <div className="space-y-3 py-4">
+                  <div className="flex items-center justify-between text-sm font-bold text-slate-700">
                     <label>Intensitas Style</label>
                     <span className="text-emerald-600">{input.intensity}%</span>
                   </div>
@@ -628,26 +837,94 @@ export default function App() {
                     <span>Dramatic</span>
                   </div>
                 </div>
-              </div>
 
-              <button 
-                onClick={handleGenerate}
-                disabled={loading}
-                className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white rounded-xl font-bold shadow-lg shadow-emerald-200 transition-all flex items-center justify-center gap-2 group"
-                id="btn-generate"
-              >
-                {loading ? (
-                  <>
-                    <RefreshCw className="animate-spin" size={20} />
-                    <span>Mempersiapkan Studio Look...</span>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles size={20} className="group-hover:scale-110 transition-transform" />
-                    <span>Generate Studio Lens</span>
-                  </>
+                {/* Editable Smart Prompt Area */}
+                <AnimatePresence>
+                  {draftPrompt && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 10 }}
+                      className="space-y-3 pt-2"
+                    >
+                      <div className="flex items-center justify-between">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 flex items-center gap-2">
+                          <Zap size={12} className="animate-pulse" />
+                          Review Smart Prompt
+                        </label>
+                        <button 
+                          onClick={() => setDraftPrompt('')}
+                          className="text-[10px] text-slate-400 hover:text-slate-600 transition-colors flex items-center gap-1"
+                        >
+                          <X size={10} />
+                          Cancel
+                        </button>
+                      </div>
+                      <textarea 
+                        value={draftPrompt}
+                        onChange={(e) => setDraftPrompt(e.target.value)}
+                        className="w-full p-4 bg-emerald-50/30 border border-emerald-100 rounded-2xl text-[11px] font-mono leading-relaxed text-emerald-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all min-h-[120px]"
+                        placeholder="Edit prompt teknis Anda di sini..."
+                        spellCheck={false}
+                      />
+                      <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl">
+                        <p className="text-[9px] text-slate-500 italic">
+                          💡 Anda bisa menambahkan detail teknis pencahayaan atau lensa secara manual di atas untuk hasil yang lebih spesifik.
+                        </p>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Primary Action Button */}
+                <button
+                  onClick={draftPrompt ? handleGenerate : handlePreparePrompt}
+                  disabled={loading || analyzing || preparingPrompt}
+                  className={`w-full py-5 rounded-2xl font-bold text-sm tracking-wide transition-all flex items-center justify-center gap-3 shadow-xl ${
+                    loading || analyzing || preparingPrompt
+                    ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                    : draftPrompt 
+                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200 hover:scale-[1.02] active:scale-[0.98]'
+                      : 'bg-slate-900 hover:bg-slate-800 text-white shadow-slate-200 hover:scale-[1.02] active:scale-[0.98]'
+                  }`}
+                  id="btn-main-action"
+                >
+                  {loading || analyzing || preparingPrompt ? (
+                    <>
+                      <RefreshCw size={20} className="animate-spin" />
+                      <span>{analyzing ? 'Menganalisa...' : loading ? 'Sedang Generate...' : preparingPrompt ? 'Menyiapkan Prompt...' : 'Memproses...'}</span>
+                    </>
+                  ) : (
+                    <>
+                      {draftPrompt ? (
+                        <>
+                          <Sparkles size={20} />
+                          <span>Generate Masterpiece</span>
+                        </>
+                      ) : (
+                        <>
+                          <Zap size={20} />
+                          <span>Review Smart Prompt</span>
+                        </>
+                      )}
+                    </>
+                  )}
+                </button>
+                
+                {draftPrompt && !loading && (
+                   <button 
+                    onClick={handlePreparePrompt}
+                    className="w-full py-2 text-[10px] font-bold text-slate-400 hover:text-emerald-600 transition-colors flex items-center justify-center gap-2"
+                   >
+                     <RefreshCw size={12} />
+                     Regenerate AI Suggestion
+                   </button>
                 )}
-              </button>
+
+                <p className="text-center text-slate-400 text-[10px] px-6">
+                  Tip: Hasil terbaik didapat dengan mengisi masalah foto mentah selengkap mungkin.
+                </p>
+              </div>
             </div>
           </div>
 
@@ -772,42 +1049,113 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Prompt Card */}
+                   {/* Prompt Card */}
                   <div className="bg-white rounded-3xl shadow-xl shadow-slate-100/50 border border-slate-200/60 overflow-hidden">
-                    <div className="p-6 space-y-6">
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <label className="text-xs font-bold uppercase tracking-widest text-emerald-600 flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 bg-emerald-600 rounded-full animate-pulse" />
-                            Smart Prompt Output
-                          </label>
-                          <div className="flex gap-2">
+                    <div className="p-6 space-y-4">
+                      {/* Smart Output (Technical Prompt) Accordion */}
+                      <div className="border-b border-slate-100 pb-4">
+                        <div 
+                          onClick={() => toggleResultSection('prompt')}
+                          className="w-full flex items-center justify-between py-2 group cursor-pointer"
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => e.key === 'Enter' && toggleResultSection('prompt')}
+                        >
+                          <div className="flex items-center gap-3 text-emerald-600">
+                             <div className={`p-1.5 rounded-lg transition-colors ${openResultSections.includes('prompt') ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-50 text-slate-400 group-hover:text-slate-600'}`}>
+                              <Zap size={16} />
+                            </div>
+                            <span className="text-xs font-bold uppercase tracking-widest text-emerald-600">Smart Prompt Output</span>
+                          </div>
+                          <div className="flex items-center gap-3">
                             <button 
-                              onClick={() => copyToClipboard(result.prompt)}
-                              className="p-2 hover:bg-slate-50 rounded-lg text-slate-500 hover:text-emerald-600 transition-all relative group"
+                              onClick={(e) => { e.stopPropagation(); copyToClipboard(result.prompt); }}
+                              className="p-2 hover:bg-slate-50 rounded-lg text-slate-400 transition-colors relative group/copy"
                               title="Copy Prompt"
-                              id="btn-copy-prompt"
                             >
-                              {copied ? <Check size={18} className="text-emerald-600" /> : <Copy size={18} />}
-                              {copied && <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[10px] px-2 py-1 rounded">Copied!</span>}
+                              {copied ? <Check size={16} className="text-emerald-600" /> : <Copy size={16} />}
                             </button>
-                            <button 
-                              className="p-2 hover:bg-slate-50 rounded-lg text-slate-500 transition-colors"
-                              title="Save to Library"
-                            >
-                              <Download size={18} />
-                            </button>
+                            <ChevronRight size={16} className={`text-slate-300 transition-transform ${openResultSections.includes('prompt') ? 'rotate-90' : ''}`} />
                           </div>
                         </div>
-                        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 font-mono text-sm leading-relaxed text-slate-700">
-                          {result.prompt}
-                        </div>
+                        
+                        <AnimatePresence>
+                          {openResultSections.includes('prompt') && (
+                            <motion.div 
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              className="overflow-hidden"
+                            >
+                              <div className="mt-3 p-4 bg-slate-50 rounded-2xl border border-slate-100/80 font-mono text-sm leading-relaxed text-slate-700 select-all">
+                                {result.prompt}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
                       </div>
 
-                      <div className="space-y-4">
-                        <label className="text-xs font-bold uppercase tracking-widest text-slate-400">Creative Guidance (Indonesian)</label>
-                        <div className="prose prose-slate prose-sm max-w-none text-slate-600 leading-relaxed italic border-l-4 border-emerald-500 pl-4 py-2">
-                          {result.creativeDirection}
+                      {/* Director's Note Accordion */}
+                      <div className="border-b border-slate-100 pb-4 pt-2">
+                        <div 
+                          onClick={() => toggleResultSection('guidance')}
+                          className="w-full flex items-center justify-between py-2 group cursor-pointer"
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => e.key === 'Enter' && toggleResultSection('guidance')}
+                        >
+                          <div className="flex items-center gap-3 text-slate-400">
+                            <div className={`p-1.5 rounded-lg transition-colors ${openResultSections.includes('guidance') ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-50 text-slate-400 group-hover:text-slate-600'}`}>
+                              <Sparkles size={16} />
+                            </div>
+                            <span className="text-xs font-bold uppercase tracking-widest text-slate-400">Director's Notes</span>
+                          </div>
+                          <ChevronRight size={16} className={`text-slate-300 transition-transform ${openResultSections.includes('guidance') ? 'rotate-90' : ''}`} />
+                        </div>
+
+                        <AnimatePresence>
+                          {openResultSections.includes('guidance') && (
+                            <motion.div 
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              className="overflow-hidden"
+                            >
+                              <div className="mt-3 p-5 bg-emerald-50/30 rounded-2xl border border-emerald-100/50">
+                                <div className="flex gap-3">
+                                  <p className="text-sm text-slate-700 leading-relaxed italic">
+                                    "{result.creativeDirection}"
+                                  </p>
+                                </div>
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+
+                      {/* Refinement UI */}
+                      <div className="pt-6 border-t border-slate-100 space-y-4">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Punya feedback? Sempurnakan hasil:</label>
+                        </div>
+                        <div className="flex gap-2">
+                          <input 
+                            type="text"
+                            placeholder="Contoh: 'Buat lighting lebih warm', 'Ganti pose jadi lebih candid'..."
+                            value={refinementFeedback}
+                            onChange={(e) => setRefinementFeedback(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleRefine()}
+                            className="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+                            disabled={refining}
+                          />
+                          <button
+                            onClick={handleRefine}
+                            disabled={refining || !refinementFeedback.trim()}
+                            className="px-4 py-2 bg-slate-900 text-white rounded-xl text-sm font-bold shadow-lg shadow-slate-200 hover:bg-slate-800 disabled:bg-slate-300 disabled:shadow-none transition-all flex items-center gap-2"
+                          >
+                            {refining ? <RefreshCw className="animate-spin" size={16} /> : <RefreshCw size={16} />}
+                            <span>Update</span>
+                          </button>
                         </div>
                       </div>
                     </div>

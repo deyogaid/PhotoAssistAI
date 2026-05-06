@@ -8,6 +8,7 @@ export const PRESETS: Preset[] = [
     config: {
       targetStyle: 'studio-minimalist',
       intensity: 30,
+      aspectRatio: '4:5',
     }
   },
   {
@@ -18,6 +19,7 @@ export const PRESETS: Preset[] = [
       photoType: 'wedding',
       targetStyle: 'luxury-editorial',
       intensity: 60,
+      aspectRatio: '4:5',
     }
   },
   {
@@ -28,6 +30,7 @@ export const PRESETS: Preset[] = [
       photoType: 'family',
       targetStyle: 'family-magazine',
       intensity: 50,
+      aspectRatio: '3:4',
     }
   },
   {
@@ -37,8 +40,19 @@ export const PRESETS: Preset[] = [
     config: {
       targetStyle: 'natural-lifestyle',
       intensity: 40,
+      aspectRatio: '4:5',
     }
   }
+];
+
+export const ASPECT_RATIO_OPTIONS = [
+  { value: '1:1', label: '1:1', description: 'Square (IG)' },
+  { value: '4:5', label: '4:5', description: 'Portrait (IG)' },
+  { value: '5:4', label: '5:4', description: 'Landscape (IG)' },
+  { value: '3:4', label: '3:4', description: 'Portrait Standard' },
+  { value: '4:3', label: '4:3', description: 'Landscape Standard' },
+  { value: '9:16', label: '9:16', description: 'Reels/Stories' },
+  { value: '16:9', label: '16:9', description: 'Cinematic/Landscape' },
 ];
 
 export const PHOTO_TYPES = [

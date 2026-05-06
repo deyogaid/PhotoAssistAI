@@ -1,5 +1,6 @@
 
 export type PhotoType = 'portrait' | 'wedding' | 'product' | 'fashion' | 'family' | 'event';
+export type AspectRatio = '1:1' | '4:5' | '5:4' | '3:4' | '4:3' | '9:16' | '16:9';
 
 export interface StyleOption {
   value: string;
@@ -15,6 +16,7 @@ export interface PromptInput {
   conditions: string[];
   targetStyle: string;
   intensity: number; // 0 to 100
+  aspectRatio: AspectRatio;
 }
 
 export interface Preset {
