@@ -236,6 +236,33 @@ export default function App() {
     });
   };
 
+  // Debounced Auto-Prompt Generation
+  useEffect(() => {
+    if (!uploadedImage || analyzing || !user || loading) return;
+
+    const timer = setTimeout(() => {
+      // Small refinement: don't auto-clear the result if it already exists, 
+      // just update the draft for the NEXT generation.
+      const runPrepare = async () => {
+        setPreparingPrompt(true);
+        try {
+          const gInput = { ...input, subjectCount: input.subjectCount || 1 };
+          const { prompt, creativeDirection } = await generateSmartPrompt(gInput, uploadedImage);
+          setDraftPrompt(prompt);
+          setDraftDirection(creativeDirection);
+        } catch (error) {
+          console.error("Auto prompt preparation failed", error);
+        } finally {
+          setPreparingPrompt(false);
+        }
+      };
+      
+      runPrepare();
+    }, 1200); // 1.2s debounce to allow user to finish adjusting options
+
+    return () => clearTimeout(timer);
+  }, [input, uploadedImage, analyzing, user, loading]);
+
   const handlePreparePrompt = async () => {
     if (!user) {
       alert("Silahkan login untuk melanjutkan.");
@@ -243,7 +270,6 @@ export default function App() {
     }
 
     setPreparingPrompt(true);
-    setResult(null); // Clear previous result
     try {
       const gInput = { ...input, subjectCount: input.subjectCount || 1 };
       const { prompt, creativeDirection } = await generateSmartPrompt(gInput, uploadedImage);
@@ -878,35 +904,24 @@ export default function App() {
 
                 {/* Primary Action Button */}
                 <button
-                  onClick={draftPrompt ? handleGenerate : handlePreparePrompt}
-                  disabled={loading || analyzing || preparingPrompt}
+                  onClick={handleGenerate}
+                  disabled={loading || analyzing || preparingPrompt || !uploadedImage}
                   className={`w-full py-5 rounded-2xl font-bold text-sm tracking-wide transition-all flex items-center justify-center gap-3 shadow-xl ${
-                    loading || analyzing || preparingPrompt
+                    loading || analyzing || preparingPrompt || !uploadedImage
                     ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                    : draftPrompt 
-                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200 hover:scale-[1.02] active:scale-[0.98]'
-                      : 'bg-slate-900 hover:bg-slate-800 text-white shadow-slate-200 hover:scale-[1.02] active:scale-[0.98]'
+                    : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200 hover:scale-[1.02] active:scale-[0.98]'
                   }`}
                   id="btn-main-action"
                 >
                   {loading || analyzing || preparingPrompt ? (
                     <>
                       <RefreshCw size={20} className="animate-spin" />
-                      <span>{analyzing ? 'Menganalisa...' : loading ? 'Sedang Generate...' : preparingPrompt ? 'Menyiapkan Prompt...' : 'Memproses...'}</span>
+                      <span>{analyzing ? 'Menganalisa Foto...' : preparingPrompt ? 'Menyiapkan Smart Prompt...' : 'Sedang Generate...'}</span>
                     </>
                   ) : (
                     <>
-                      {draftPrompt ? (
-                        <>
-                          <Sparkles size={20} />
-                          <span>Generate Masterpiece</span>
-                        </>
-                      ) : (
-                        <>
-                          <Zap size={20} />
-                          <span>Review Smart Prompt</span>
-                        </>
-                      )}
+                      <Sparkles size={20} />
+                      <span>{draftPrompt ? 'Generate Masterpiece' : 'Siapkan Foto Dahulu'}</span>
                     </>
                   )}
                 </button>

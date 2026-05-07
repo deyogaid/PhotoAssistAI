@@ -61,35 +61,35 @@ export async function generateSmartPrompt(
 ): Promise<{ prompt: string; creativeDirection: string }> {
   const systemInstruction = `
     You are a high-end Digital Imaging Specialist and Commercial Photography Director.
-    Your objective: Create master-quality image generation prompts and creative direction that translates raw amateurish concepts into world-class studio photography.
-
+    Your objective: Create master-quality image generation prompts using a LAYERED STRUCTURE.
+    
     ${previousResult ? `
     REFINEMENT MODE:
-    Previous Attempt Prompt: ${previousResult.prompt}
+    Previous Attempt JSON: ${previousResult.prompt}
     User Feedback: "${refinementFeedback}"
-    Your task is to EVOLVE the previous version based on the feedback while maintaining its core strengths.
+    Your task is to EVOLVE the specific layers in the JSON based on the feedback while maintaining the overall photography excellence.
     ` : 'NEW GENERATION MODE:'}
 
-    TARGET VISUAL SPECS:
+    Output MUST be a JSON object with these exact keys:
+    {
+      "identity_lock": "Focus on maintaining face/subject details from the reference.",
+      "composition_protection": "Describe framing, depth of field, and subject placement.",
+      "technical_corrections": "Address lighting fixes, sharpness, and color based on input issues: ${input.conditions.join(', ')}.",
+      "style_translation": "Translate aesthetic '${input.targetStyle}' into professional art terms.",
+      "camera_language": "Lens choice (e.g., 85mm), shutter speed, ISO behavior.",
+      "negative_prompt": "Specific things to avoid.",
+      "creative_direction": "Expert photography advice in Indonesian for the live shoot."
+    }
+
+    Context:
     - CATEGORY: ${input.photoType}
     - SUBJECTS: ${input.subjectCount} person(s)
-    - OUTFIT: ${input.outfitColor || 'Professional neutral tones'}
-    - FIXING: ${input.conditions.join(', ') || 'Optimizing all elements'}
-    - MOOD/STYLE: ${input.targetStyle}
-    - INTENSITY: ${input.intensity}% (Affects dramatic contrast and color saturation)
+    - OUTFIT: ${input.outfitColor || 'Neutral'}
+    - INTENSITY: ${input.intensity}%
     - ASPECT RATIO: ${input.aspectRatio}
-
-    PHOTOGRAPHY TECHNICAL DIRECTIVES:
-    1. LIGHTING: Describe specific light qualities (e.g., "high-key studio lighting with large octabox softbox at 45 degrees", "dramatic Rembrandt lighting with controlled shadows", "subtle rim light for subject separation"). NO studio gear visible.
-    2. OPTICS: Reference high-end glass (e.g., "shot on Hasselblad H6D-400c with HC 80mm lens", "sharp focus on eyes with soft f/2.8 bokeh").
-    3. TEXTURE & COLOR: Emphasize "ultra-realistic skin pore detail", "organic texture preservation", "accurate color reproduction mapped to Kodak Portra 400 or Fuji 400H stocks".
-    4. COMPOSITION: Use "rule of thirds", "eye-level perspective", "clean minimal studio backdrop". Frame strictly for a ${input.aspectRatio} composition.
-
-    ${referenceImage ? "CRITICAL: A reference image of a real person is provided. The output MUST maintain 100% facial identity, anatomical proportions, and individual characteristics of the person in the reference image. Do not genericize the face." : ""}
-
-    OUTPUT FORMAT:
-    [PROMPT]: [A single, dense, technical paragraph of text. NO markdown. No lists.]
-    [DIRECTION]: [Expert photography advice in Indonesian for the live shoot, covering posing and lighting setup.]
+    ${referenceImage ? "- Reference image provided for identity lock." : ""}
+    
+    Return ONLY the JSON.
   `;
 
   try {
@@ -99,15 +99,19 @@ export async function generateSmartPrompt(
     });
 
     const text = response.text || '';
-    const promptMatch = text.match(/\[PROMPT\]:(.*?)(?=\[DIRECTION\]|$)/s);
-    const directionMatch = text.match(/\[DIRECTION\]:(.*)/s);
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error("Failed to parse layered prompt JSON");
+    
+    const parsed = JSON.parse(jsonMatch[0]);
+    const creativeDirection = parsed.creative_direction || "Professional studio enhancement applied.";
+    
+    // Create a version of the prompt that is structured for the user to review
+    const { creative_direction, ...structuredPrompt } = parsed;
+    const promptString = JSON.stringify(structuredPrompt, null, 2);
 
-    const prompt = promptMatch ? promptMatch[1].trim() : "Failed to generate prompt.";
-    const creativeDirection = directionMatch ? directionMatch[1].trim() : "Failed to generate direction.";
-
-    return { prompt, creativeDirection };
+    return { prompt: promptString, creativeDirection };
   } catch (error) {
-    console.error("Gemini Prompt Generation Error:", error);
+    console.error("Gemini Structured Prompt Error:", error);
     throw error;
   }
 }
@@ -118,8 +122,20 @@ export async function generateImageFromPrompt(
   referenceImage?: string | null
 ): Promise<string> {
   try {
+    let finalPrompt = prompt;
+    
+    // If the input is a JSON string (layered prompt), flatten it
+    try {
+      if (prompt.trim().startsWith('{')) {
+        const parsed = JSON.parse(prompt);
+        finalPrompt = Object.values(parsed).filter(v => typeof v === 'string').join('. ');
+      }
+    } catch (e) {
+      // Not JSON or parse failed, use raw prompt
+    }
+
     const parts: any[] = [
-      { text: `MAINTAIN FACE IDENTITY. HIGH QUALITY PHOTOGRAPHY. ${prompt}` }
+      { text: `ULTRA HIGH QUALITY PHOTOGRAPHY. ${finalPrompt}` }
     ];
 
     if (referenceImage) {
