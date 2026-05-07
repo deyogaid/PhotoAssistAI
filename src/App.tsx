@@ -35,7 +35,7 @@ import {
   CONDITION_OPTIONS, 
   ASPECT_RATIO_OPTIONS 
 } from './constants';
-import { generateSmartPrompt, generateImageFromPrompt, analyzeImage } from './services/gemini';
+import { generateSmartPrompt, generateImageFromPrompt, analyzeImage, generatePhotoGuidance } from './services/gemini';
 import { auth, db } from './lib/firebase';
 import { 
   signInWithPopup, 
