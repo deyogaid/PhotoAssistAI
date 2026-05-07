@@ -17,6 +17,7 @@ export interface PromptInput {
   targetStyle: string;
   intensity: number; // 0 to 100
   aspectRatio: AspectRatio;
+  relationship_context?: string;
 }
 
 export interface Preset {

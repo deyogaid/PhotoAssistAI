@@ -69,6 +69,7 @@ export default function App() {
     targetStyle: 'studio-minimalist',
     intensity: 50,
     aspectRatio: '1:1',
+    relationship_context: '',
   });
 
   const [showStyleGallery, setShowStyleGallery] = useState(false);
@@ -210,9 +211,13 @@ export default function App() {
         });
         // System updates fields automatically based on analysis
         // Auto-generation is removed to allow manual review as per user request
-      } catch (error) {
+      } catch (error: any) {
         console.error("Analysis failed", error);
-        alert("Gagal menganalisa gambar. Pastikan format benar.");
+        if (error.message === "QUOTA_EXHAUSTED") {
+          alert("Batas penggunaan gratis (quota) Anda telah habis untuk saat ini. Mohon tunggu beberapa saat atau coba lagi besok.");
+        } else {
+          alert("Gagal menganalisa gambar. Pastikan format benar.");
+        }
       } finally {
         setAnalyzing(false);
       }
@@ -248,9 +253,13 @@ export default function App() {
       const { prompt, creativeDirection } = await generateSmartPrompt(gInput, uploadedImage);
       setDraftPrompt(prompt);
       setDraftDirection(creativeDirection);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Prompt preparation failed", error);
-      alert("Gagal menyiapkan prompt. Coba lagi.");
+      if (error.message === "QUOTA_EXHAUSTED") {
+        alert("Batas penggunaan gratis (quota) Anda telah habis untuk saat ini. Mohon tunggu beberapa saat atau coba lagi besok.");
+      } else {
+        alert("Gagal menyiapkan prompt. Coba lagi.");
+      }
     } finally {
       setPreparingPrompt(false);
     }
@@ -314,9 +323,10 @@ export default function App() {
         );
 
         if (!comboExists) {
+          const styleLabel = STYLE_OPTIONS.find(s => s.value === gInput.targetStyle)?.label || 'Custom';
           await addDoc(collection(db, 'user_presets'), {
             userId: user.uid,
-            name: `Mode ${STYLE_OPTIONS.find(s => s.value === gInput.targetStyle)?.label || 'Custom'}`,
+            name: `Preset ${styleLabel}`,
             config: {
               photoType: gInput.photoType,
               targetStyle: gInput.targetStyle,
@@ -329,8 +339,12 @@ export default function App() {
         handleFirestoreError(e, OperationType.CREATE, 'generations');
       }
 
-    } catch (error) {
-      alert("Terjadi kesalahan saat generate image. Mohon coba lagi.");
+    } catch (error: any) {
+      if (error.message === "QUOTA_EXHAUSTED") {
+        alert("Batas penggunaan gratis (quota) Anda telah habis untuk saat ini. Mohon tunggu beberapa saat atau coba lagi besok.");
+      } else {
+        alert("Terjadi kesalahan saat generate image. Mohon coba lagi.");
+      }
     } finally {
       setLoading(false);
       setDraftPrompt(''); // Clear draft after successful generation
@@ -374,8 +388,12 @@ export default function App() {
       } catch (e) {
         console.error("Failed to save refined result", e);
       }
-    } catch (error) {
-      alert("Gagal memperbarui hasil.");
+    } catch (error: any) {
+      if (error.message === "QUOTA_EXHAUSTED") {
+        alert("Batas penggunaan gratis (quota) Anda telah habis untuk saat ini. Mohon tunggu beberapa saat atau coba lagi besok.");
+      } else {
+        alert("Gagal memperbarui hasil.");
+      }
     } finally {
       setRefining(false);
     }
@@ -432,6 +450,67 @@ export default function App() {
     );
   }
 
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-[#F8FAFC] flex flex-col items-center justify-center p-4 relative overflow-hidden font-sans">
+        {/* Background decorative elements */}
+        <div className="absolute -top-[10%] -left-[10%] w-[40%] h-[40%] bg-emerald-100/50 rounded-full blur-[120px] pointer-events-none" />
+        <div className="absolute -bottom-[10%] -right-[10%] w-[40%] h-[40%] bg-emerald-100/30 rounded-full blur-[120px] pointer-events-none" />
+        
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="max-w-md w-full bg-white rounded-3xl shadow-2xl shadow-emerald-100/50 border border-slate-100 p-8 relative z-10 text-center"
+        >
+          <div className="w-20 h-20 bg-emerald-600 rounded-3xl mx-auto flex items-center justify-center text-white shadow-xl shadow-emerald-200 rotate-12 mb-8">
+            <Sparkles size={40} />
+          </div>
+          
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900 mb-2">
+            PhotoAssist<span className="text-emerald-600">AI</span>
+          </h1>
+          <p className="text-slate-500 text-sm leading-relaxed mb-10">
+            Tingkatkan kualitas foto Anda dengan AI cerdas. Deteksi otomatis, gaya preset sinematik, dan koreksi pencahayaan instan.
+          </p>
+
+          <div className="space-y-4">
+            <button 
+              onClick={login}
+              className="w-full flex items-center justify-center gap-3 bg-slate-900 text-white py-4 px-6 rounded-2xl font-bold hover:bg-slate-800 transition-all active:scale-[0.98] shadow-lg shadow-slate-200"
+            >
+              <LogIn size={20} />
+              <span>Lanjutkan dengan Google</span>
+            </button>
+            <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">
+              Secure Auth by Firebase
+            </p>
+          </div>
+
+          <div className="mt-12 grid grid-cols-2 gap-4">
+            <div className="p-4 bg-slate-50 rounded-2xl text-left border border-slate-100">
+              <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-emerald-600 mb-2 shadow-sm">
+                <Camera size={14} />
+              </div>
+              <p className="text-[11px] font-bold text-slate-800">Advanced Presets</p>
+              <p className="text-[9px] text-slate-400 mt-1">Coretan sinematik siap pakai.</p>
+            </div>
+            <div className="p-4 bg-slate-50 rounded-2xl text-left border border-slate-100">
+              <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-emerald-600 mb-2 shadow-sm">
+                <Zap size={14} />
+              </div>
+              <p className="text-[11px] font-bold text-slate-800">AI Analysis</p>
+              <p className="text-[9px] text-slate-400 mt-1">Deteksi masalah secara real-time.</p>
+            </div>
+          </div>
+        </motion.div>
+
+        <footer className="mt-8 text-[11px] text-slate-400 font-medium">
+          PhotoAssistAI © 2024 • Powered by Gemini Pro Vision
+        </footer>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900 font-sans selection:bg-emerald-100 selection:text-emerald-900">
       {/* Header */}
@@ -480,21 +559,8 @@ export default function App() {
       <main className="max-w-7xl mx-auto px-4 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           
-          {/* Sidebar - Input Panel */}
           <div className="lg:col-span-4 space-y-6">
-            <div className={`bg-white rounded-2xl shadow-sm border border-slate-200/60 p-6 space-y-8 transition-opacity ${!user && 'opacity-50 pointer-events-none'}`}>
-              {!user && (
-                <div className="absolute inset-0 z-50 flex items-center justify-center p-6 text-center">
-                  <div className="bg-white p-6 rounded-2xl shadow-xl border border-slate-100 space-y-4">
-                    <History size={40} className="mx-auto text-slate-300" />
-                    <div>
-                      <p className="font-bold text-slate-800">Login Diperlukan</p>
-                      <p className="text-xs text-slate-500 mt-1">Simpan history & gunakan fitur analisa foto secara gratis.</p>
-                    </div>
-                    <button onClick={login} className="w-full py-2.5 bg-emerald-600 text-white rounded-lg text-sm font-bold">Login Sekarang</button>
-                  </div>
-                </div>
-              )}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60 p-6 space-y-8 relative">
               
               {/* Image Upload Area */}
               <section className="space-y-4">
@@ -566,15 +632,24 @@ export default function App() {
                     >
                       <div className="grid grid-cols-2 gap-2">
                         {PRESETS.map(p => (
-                          <button
+                          <motion.button
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
                             key={p.id}
                             onClick={() => { applyPreset(p); setShowPresets(false); }}
-                            className="p-3 text-left border border-slate-100 rounded-xl hover:border-emerald-200 hover:bg-emerald-50 transition-all group bg-white"
+                            className={`p-3 text-left border rounded-xl transition-all group ${
+                              input.targetStyle === p.config.targetStyle && input.photoType === p.config.photoType
+                              ? 'border-emerald-500 bg-emerald-50/50 shadow-sm'
+                              : 'border-slate-100 hover:border-emerald-200 hover:bg-emerald-50 bg-white text-slate-400'
+                            }`}
                             id={`preset-${p.id}`}
                           >
-                            <div className="font-semibold text-[11px] group-hover:text-emerald-700">{p.name}</div>
-                            <div className="text-[9px] text-slate-400 leading-tight mt-0.5">{p.description}</div>
-                          </button>
+                            <div className="flex items-center justify-between gap-1 mb-1">
+                              <div className={`font-semibold text-[11px] ${input.targetStyle === p.config.targetStyle && input.photoType === p.config.photoType ? 'text-emerald-700' : 'text-slate-700 group-hover:text-emerald-700'}`}>{p.name}</div>
+                              {input.targetStyle === p.config.targetStyle && input.photoType === p.config.photoType && <Check size={10} className="text-emerald-600" />}
+                            </div>
+                            <div className="text-[9px] text-slate-400 leading-tight">{p.description}</div>
+                          </motion.button>
                         ))}
                       </div>
 
@@ -734,6 +809,29 @@ export default function App() {
                     />
                   </div>
                 </div>
+
+                {input.subjectCount > 1 && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="space-y-2 p-3 bg-emerald-50/20 border border-emerald-100 rounded-xl"
+                  >
+                    <div className="flex items-center gap-2 text-emerald-700">
+                      <Users size={14} />
+                      <label className="text-[11px] font-bold uppercase tracking-tight">Konteks Hubungan Subjek</label>
+                    </div>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. Romantic couple, family, professional"
+                      value={input.relationship_context}
+                      onChange={(e) => setInput({ ...input, relationship_context: e.target.value })}
+                      className="w-full px-3 py-1.5 bg-white border border-emerald-100 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all font-medium text-emerald-900"
+                    />
+                    <p className="text-[9px] text-emerald-600/60 leading-tight italic">
+                      AI mendeteksi hubungan antar subjek untuk emosi foto yang lebih akurat.
+                    </p>
+                  </motion.div>
+                )}
 
                 <div className="space-y-3 pb-2">
                   <div className="flex items-center gap-2 text-slate-700 py-3">
@@ -1237,13 +1335,15 @@ export default function App() {
               <div className="flex-1 overflow-y-auto p-6 scrollbar-hide">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {STYLE_OPTIONS.map((style) => (
-                    <button
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
                       key={style.value}
                       onClick={() => {
                         setInput({ ...input, targetStyle: style.value });
                         setShowStyleGallery(false);
                       }}
-                      className={`p-4 rounded-2xl border-2 text-left transition-all hover:scale-[1.02] active:scale-[0.98] flex items-start gap-4 ${
+                      className={`p-4 rounded-2xl border-2 text-left transition-all flex items-start gap-4 ${
                         input.targetStyle === style.value
                         ? 'border-emerald-500 bg-emerald-50/50 shadow-md shadow-emerald-100'
                         : 'border-slate-100 hover:border-emerald-200 bg-white'
@@ -1259,7 +1359,7 @@ export default function App() {
                         </div>
                         <p className="text-[10px] leading-relaxed text-slate-500 font-medium">{style.description}</p>
                       </div>
-                    </button>
+                    </motion.button>
                   ))}
                 </div>
               </div>

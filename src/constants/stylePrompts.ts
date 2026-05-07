@@ -56,6 +56,13 @@ export const STYLE_PROMPT_MAP: Record<string, StylePrompt> = {
     atmosphere: "professional, sharp, commercial",
     renderStyle: "corporate photography"
   },
+  'family-magazine': {
+    background: "cozy elegant family home or upscale garden setting",
+    lighting: "soft directional light, warm highlighting on faces",
+    atmosphere: "warm, loving, high-end editorial vibe",
+    camera: "shot on Sony A7R IV, 50mm lens, natural warmth",
+    colorGrading: "soft natural tones, high dynamic range"
+  },
 
   // New Cinematic Styles
   'cinematic': {

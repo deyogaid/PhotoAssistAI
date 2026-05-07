@@ -4,6 +4,15 @@ import { buildStylePrompt, STYLE_PROMPT_MAP } from "../constants/stylePrompts";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
+export function isQuotaError(error: any): boolean {
+  const errorStr = JSON.stringify(error).toLowerCase();
+  return (
+    errorStr.includes('resource_exhausted') || 
+    errorStr.includes('quota exceeded') || 
+    errorStr.includes('429')
+  );
+}
+
 export async function analyzeImage(base64Image: string): Promise<Partial<PromptInput>> {
   const prompt = `
     Analyze this photograph from a professional photographer's perspective.
@@ -14,6 +23,7 @@ export async function analyzeImage(base64Image: string): Promise<Partial<PromptI
     4. Technical issues (messy-bg, harsh-light, bad-composition, low-light)
     5. Current style
     6. Aspect ratio (MUST be one of: '1:1', '4:5', '5:4', '3:4', '4:3', '9:16', '16:9' based on image dimensions)
+    7. IF multiple subjects: Infer relationship_context (e.g., romantic couple, close friends, wedding pair, family, professional duo, sibling portrait)
     
     Return the result ONLY as a JSON object, no other text:
     {
@@ -22,7 +32,8 @@ export async function analyzeImage(base64Image: string): Promise<Partial<PromptI
       "outfitColor": "string",
       "conditions": ["string"],
       "targetStyle": "string",
-      "aspectRatio": "string"
+      "aspectRatio": "string",
+      "relationship_context": "string (optional)"
     }
   `;
 
@@ -50,6 +61,9 @@ export async function analyzeImage(base64Image: string): Promise<Partial<PromptI
     return {};
   } catch (error) {
     console.error("Analysis error:", error);
+    if (isQuotaError(error)) {
+      throw new Error("QUOTA_EXHAUSTED");
+    }
     return {};
   }
 }
@@ -85,6 +99,7 @@ export async function generateSmartPrompt(
     Context:
     - CATEGORY: ${input.photoType}
     - SUBJECTS: ${input.subjectCount} person(s)
+    ${input.relationship_context ? `- RELATIONSHIP: ${input.relationship_context}` : ""}
     - OUTFIT: ${input.outfitColor || 'Neutral'}
     - INTENSITY: ${input.intensity}%
     - ASPECT RATIO: ${input.aspectRatio}
@@ -115,6 +130,9 @@ export async function generateSmartPrompt(
     return { prompt: promptString, creativeDirection };
   } catch (error) {
     console.error("Gemini Structured Prompt Error:", error);
+    if (isQuotaError(error)) {
+      throw new Error("QUOTA_EXHAUSTED");
+    }
     throw error;
   }
 }
@@ -131,7 +149,11 @@ export async function generateImageFromPrompt(
     try {
       if (prompt.trim().startsWith('{')) {
         const parsed = JSON.parse(prompt);
-        finalPrompt = Object.values(parsed).filter(v => typeof v === 'string').join('. ');
+        finalPrompt = Object.values(parsed)
+          .filter(v => typeof v === 'string')
+          .map(v => (v as string).trim())
+          .map(v => v.endsWith('.') || v.endsWith(',') ? v : v + '.')
+          .join(' ');
       }
     } catch (e) {
       // Not JSON or parse failed, use raw prompt
@@ -168,6 +190,9 @@ export async function generateImageFromPrompt(
     return '';
   } catch (err) {
     console.error("Image generation failed:", err);
+    if (isQuotaError(err)) {
+      throw new Error("QUOTA_EXHAUSTED");
+    }
     throw err;
   }
 }
