@@ -27,13 +27,13 @@ export async function analyzeImage(base64Image: string): Promise<Partial<PromptI
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-flash-latest",
       contents: {
         parts: [
           { text: prompt },
           {
             inlineData: {
-              data: base64Image.split(',')[1],
+              data: base64Image.includes(',') ? base64Image.split(',')[1] : base64Image,
               mimeType: "image/jpeg"
             }
           }
@@ -94,7 +94,7 @@ export async function generateSmartPrompt(
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-flash-latest",
       contents: [{ parts: [{ text: systemInstruction }] }],
     });
 
@@ -141,7 +141,7 @@ export async function generateImageFromPrompt(
     if (referenceImage) {
       parts.push({
         inlineData: {
-          data: referenceImage.split(',')[1],
+          data: referenceImage.includes(',') ? referenceImage.split(',')[1] : referenceImage,
           mimeType: "image/jpeg"
         }
       });

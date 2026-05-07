@@ -236,33 +236,6 @@ export default function App() {
     });
   };
 
-  // Debounced Auto-Prompt Generation
-  useEffect(() => {
-    if (!uploadedImage || analyzing || !user || loading) return;
-
-    const timer = setTimeout(() => {
-      // Small refinement: don't auto-clear the result if it already exists, 
-      // just update the draft for the NEXT generation.
-      const runPrepare = async () => {
-        setPreparingPrompt(true);
-        try {
-          const gInput = { ...input, subjectCount: input.subjectCount || 1 };
-          const { prompt, creativeDirection } = await generateSmartPrompt(gInput, uploadedImage);
-          setDraftPrompt(prompt);
-          setDraftDirection(creativeDirection);
-        } catch (error) {
-          console.error("Auto prompt preparation failed", error);
-        } finally {
-          setPreparingPrompt(false);
-        }
-      };
-      
-      runPrepare();
-    }, 1200); // 1.2s debounce to allow user to finish adjusting options
-
-    return () => clearTimeout(timer);
-  }, [input, uploadedImage, analyzing, user, loading]);
-
   const handlePreparePrompt = async () => {
     if (!user) {
       alert("Silahkan login untuk melanjutkan.");
@@ -878,13 +851,24 @@ export default function App() {
                           <Zap size={12} className="animate-pulse" />
                           Review Smart Prompt
                         </label>
-                        <button 
-                          onClick={() => setDraftPrompt('')}
-                          className="text-[10px] text-slate-400 hover:text-slate-600 transition-colors flex items-center gap-1"
-                        >
-                          <X size={10} />
-                          Cancel
-                        </button>
+                        <div className="flex items-center gap-3">
+                          <button 
+                            onClick={handlePreparePrompt}
+                            disabled={preparingPrompt || loading || analyzing}
+                            className="text-[10px] font-bold text-emerald-600 hover:text-emerald-700 transition-colors flex items-center gap-1 bg-emerald-50 px-2 py-1 rounded-md"
+                            title="Terapkan perubahan pengaturan ke prompt"
+                          >
+                            <RefreshCw size={10} className={preparingPrompt ? 'animate-spin' : ''} />
+                            Apply Settings
+                          </button>
+                          <button 
+                            onClick={() => setDraftPrompt('')}
+                            className="text-[10px] text-slate-400 hover:text-slate-600 transition-colors flex items-center gap-1"
+                          >
+                            <X size={10} />
+                            Cancel
+                          </button>
+                        </div>
                       </div>
                       <textarea 
                         value={draftPrompt}
@@ -904,13 +888,15 @@ export default function App() {
 
                 {/* Primary Action Button */}
                 <button
-                  onClick={handleGenerate}
-                  disabled={loading || analyzing || preparingPrompt || !uploadedImage}
+                  onClick={!draftPrompt ? handlePreparePrompt : handleGenerate}
+                  disabled={loading || analyzing || preparingPrompt || (!uploadedImage && !draftPrompt)}
                   className={`w-full py-5 rounded-2xl font-bold text-sm tracking-wide transition-all flex items-center justify-center gap-3 shadow-xl ${
-                    loading || analyzing || preparingPrompt || !uploadedImage
+                    loading || analyzing || preparingPrompt || (!uploadedImage && !draftPrompt)
                     ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                    : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200 hover:scale-[1.02] active:scale-[0.98]'
-                  }`}
+                    : draftPrompt 
+                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200'
+                      : 'bg-slate-900 hover:bg-slate-800 text-white shadow-slate-200'
+                  } hover:scale-[1.02] active:scale-[0.98]`}
                   id="btn-main-action"
                 >
                   {loading || analyzing || preparingPrompt ? (
@@ -920,8 +906,22 @@ export default function App() {
                     </>
                   ) : (
                     <>
-                      <Sparkles size={20} />
-                      <span>{draftPrompt ? 'Generate Masterpiece' : 'Siapkan Foto Dahulu'}</span>
+                      {!uploadedImage && !draftPrompt ? (
+                        <>
+                          <ImageIcon size={20} />
+                          <span>Upload Foto Dahulu</span>
+                        </>
+                      ) : !draftPrompt ? (
+                        <>
+                          <Zap size={20} />
+                          <span>Siapkan Smart Prompt</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles size={20} />
+                          <span>Generate Masterpiece</span>
+                        </>
+                      )}
                     </>
                   )}
                 </button>
