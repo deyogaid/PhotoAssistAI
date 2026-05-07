@@ -1,6 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { PromptInput, GenerationResult } from "../types";
 import { buildStylePrompt, STYLE_PROMPT_MAP } from "../constants/stylePrompts";
+import { aiRouter } from "../ai/router";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
@@ -38,21 +39,7 @@ export async function analyzeImage(base64Image: string): Promise<Partial<PromptI
   `;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-flash-latest",
-      contents: {
-        parts: [
-          { text: prompt },
-          {
-            inlineData: {
-              data: base64Image.includes(',') ? base64Image.split(',')[1] : base64Image,
-              mimeType: "image/jpeg"
-            }
-          }
-        ]
-      }
-    });
-
+    const response = await aiRouter.generateText(prompt, [base64Image]);
     const text = response.text || '';
     const jsonMatch = text.match(/\{.*\}/s);
     if (jsonMatch) {
@@ -111,11 +98,7 @@ export async function generateSmartPrompt(
   `;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-flash-latest",
-      contents: [{ parts: [{ text: systemInstruction }] }],
-    });
-
+    const response = await aiRouter.generateText(systemInstruction);
     const text = response.text || '';
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error("Failed to parse layered prompt JSON");
@@ -129,7 +112,7 @@ export async function generateSmartPrompt(
 
     return { prompt: promptString, creativeDirection };
   } catch (error) {
-    console.error("Gemini Structured Prompt Error:", error);
+    console.error("AI Router Structured Prompt Error:", error);
     if (isQuotaError(error)) {
       throw new Error("QUOTA_EXHAUSTED");
     }
