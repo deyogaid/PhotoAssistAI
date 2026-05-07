@@ -107,6 +107,54 @@ export const STYLE_OPTIONS: StyleOption[] = [
     description: 'Even lighting for product and corporate clarity.',
     icon: '🏢'
   },
+  { 
+    value: 'cinematic', 
+    label: 'Cinematic Movie', 
+    description: 'Blockbuster movie aesthetic with dramatic lighting.',
+    icon: '🎬'
+  },
+  { 
+    value: 'luxury', 
+    label: 'Luxury Elite', 
+    description: 'Ultra-high-end environment and polished look.',
+    icon: '👑'
+  },
+  { 
+    value: 'linkedin', 
+    label: 'LinkedIn Pro', 
+    description: 'Professional corporate headshot for career growth.',
+    icon: '💼'
+  },
+  { 
+    value: 'streetwear', 
+    label: 'Urban Streetwear', 
+    description: 'Edgy street style with industrial vibes.',
+    icon: '🛹'
+  },
+  { 
+    value: 'minimalist', 
+    label: 'Pure Minimalist', 
+    description: 'Simple, focused, and elegantly clean.',
+    icon: '⚪'
+  },
+  { 
+    value: 'travel', 
+    label: 'Travel Adventure', 
+    description: 'Breathtaking backgrounds and scenery.',
+    icon: '✈️'
+  },
+  { 
+    value: 'cyberpunk', 
+    label: 'Cyberpunk Neon', 
+    description: 'Futuristic night scenes and neon lights.',
+    icon: '🌆'
+  },
+  { 
+    value: 'academic', 
+    label: 'Academic Classic', 
+    description: 'Timeless studious look with classical lighting.',
+    icon: '🎓'
+  },
 ];
 
 export const CONDITION_OPTIONS = [

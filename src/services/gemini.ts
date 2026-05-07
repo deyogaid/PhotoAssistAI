@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { PromptInput, GenerationResult } from "../types";
+import { buildStylePrompt, STYLE_PROMPT_MAP } from "../constants/stylePrompts";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
@@ -87,6 +88,8 @@ export async function generateSmartPrompt(
     - OUTFIT: ${input.outfitColor || 'Neutral'}
     - INTENSITY: ${input.intensity}%
     - ASPECT RATIO: ${input.aspectRatio}
+    - BASE STYLE DIRECTIVES: ${buildStylePrompt(input.targetStyle) || input.targetStyle}
+    ${STYLE_PROMPT_MAP[input.targetStyle]?.negativePrompt ? `- SUGGESTED DISCARDS: ${STYLE_PROMPT_MAP[input.targetStyle].negativePrompt}` : ""}
     ${referenceImage ? "- Reference image provided for identity lock." : ""}
     
     Return ONLY the JSON.
