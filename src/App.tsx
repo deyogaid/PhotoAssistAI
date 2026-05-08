@@ -28,7 +28,9 @@ import {
   Settings,
   Lock,
   ExternalLink,
-  ShieldCheck
+  ShieldCheck,
+  ArrowLeft,
+  User as UserIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { PromptInput, GenerationResult, PhotoType } from './types';
@@ -102,6 +104,7 @@ export default function App() {
 
   const [userApiKeys, setUserApiKeys] = useState<Partial<Record<AIProviderName, string>>>({});
   const [showSettings, setShowSettings] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   useEffect(() => {
     const savedKeys = localStorage.getItem('photoassist_api_keys');
@@ -186,11 +189,25 @@ export default function App() {
   }, [user]);
 
   const login = async () => {
+    setIsLoggingIn(true);
     try {
       const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
-    } catch (error) {
-      console.error(error);
+      provider.setCustomParameters({ prompt: 'select_account' });
+      const result = await signInWithPopup(auth, provider);
+      if (result.user) {
+        setUser(result.user);
+      }
+    } catch (error: any) {
+      console.error("Auth Error:", error);
+      if (error.code === 'auth/popup-blocked') {
+        alert("Pop-up diblokir oleh browser. Mohon izinkan pop-up untuk login dengan Google.");
+      } else if (error.code === 'auth/cancelled-popup-request') {
+        // Just silent
+      } else {
+        alert("Gagal masuk: " + (error.message || "Terjadi kesalahan tidak dikenal"));
+      }
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
@@ -507,17 +524,34 @@ export default function App() {
             PhotoAssist<span className="text-emerald-600">AI</span>
           </a>
           <p className="text-slate-500 text-sm leading-relaxed mb-10">
-            Tingkatkan kualitas foto Anda dengan AI cerdas. Deteksi otomatis, gaya preset sinematik, dan koreksi pencahayaan instan.
+            Masuk ke ruang kerja pribadi Anda. Semua riwayat, preset, dan pengaturan API key disimpan secara aman untuk akun Anda sendiri.
           </p>
 
           <div className="space-y-4">
             <button 
               onClick={login}
-              className="w-full flex items-center justify-center gap-3 bg-slate-900 text-white py-4 px-6 rounded-2xl font-bold hover:bg-slate-800 transition-all active:scale-[0.98] shadow-lg shadow-slate-200"
+              disabled={isLoggingIn}
+              className="w-full flex items-center justify-center gap-3 bg-slate-900 text-white py-4 px-6 rounded-2xl font-bold hover:bg-slate-800 transition-all active:scale-[0.98] shadow-lg shadow-slate-200 disabled:opacity-70 disabled:cursor-not-allowed"
             >
-              <LogIn size={20} />
-              <span>Lanjutkan dengan Google</span>
+              {isLoggingIn ? (
+                <RefreshCw className="animate-spin" size={20} />
+              ) : (
+                <LogIn size={20} />
+              )}
+              <span>{isLoggingIn ? 'Menghubungkan...' : 'Masuk dengan Akun Google Pribadi'}</span>
             </button>
+            
+            <button 
+              onClick={() => {
+                // If they are on a deep link, this just resets to top
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              className="w-full flex items-center justify-center gap-3 bg-white border border-slate-200 text-slate-600 py-3 px-6 rounded-2xl font-medium hover:bg-slate-50 transition-all active:scale-[0.98]"
+            >
+              <ArrowLeft size={18} />
+              <span>Kembali ke Atas</span>
+            </button>
+
             <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">
               Secure Auth by Firebase
             </p>
@@ -552,44 +586,68 @@ export default function App() {
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900 font-sans selection:bg-emerald-100 selection:text-emerald-900">
       {/* Header */}
       <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-bottom border-slate-200">
-        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 sm:h-20 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center text-white shadow-lg shadow-emerald-200">
-              <Sparkles size={18} />
+            <div className="w-8 h-8 sm:w-10 sm:h-10 bg-emerald-600 rounded-lg sm:rounded-xl flex items-center justify-center text-white shadow-lg shadow-emerald-200 transition-transform hover:scale-105">
+              <Sparkles size={18} className="sm:w-5 sm:h-5" />
             </div>
             <a 
               href="https://ais-pre-sww3kxvzp6zypusf5kxk52-517328850702.asia-southeast1.run.app"
-              className="font-bold text-xl tracking-tight text-slate-800 hover:opacity-80 transition-opacity"
+              className="font-bold text-lg sm:text-xl tracking-tight text-slate-800 hover:opacity-80 transition-opacity whitespace-nowrap"
             >
               PhotoAssist<span className="text-emerald-600">AI</span>
             </a>
           </div>
           
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
+            {user && (
+              <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-100">
+                <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+                <span className="text-[10px] font-bold uppercase tracking-wider">Sesi Aktif</span>
+              </div>
+            )}
             <button 
               onClick={() => setShowSettings(true)}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition-all"
+              className="flex items-center gap-2 px-2 sm:px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition-all border border-transparent active:border-slate-200"
               title="AI Settings"
             >
               <ShieldCheck size={18} className={Object.values(userApiKeys).some(v => !!v) ? 'text-emerald-600' : 'text-slate-400'} />
-              <span className="hidden sm:inline">GPT Auth</span>
+              <span className="hidden md:inline">GPT Auth</span>
             </button>
-            <div className="h-6 w-px bg-slate-200" />
+            <div className="hidden sm:block h-6 w-px bg-slate-200" />
             {user ? (
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 sm:gap-4">
                 <button 
                   onClick={() => setShowHistory(!showHistory)}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                     showHistory ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-100'
                   }`}
                 >
                   <History size={16} />
-                  <span>Library</span>
+                  <span className="hidden sm:inline">Library</span>
                 </button>
-                <div className="h-6 w-px bg-slate-200" />
-                <div className="flex items-center gap-3">
-                  <img src={user.photoURL || ''} alt={user.displayName || ''} className="w-8 h-8 rounded-full border border-slate-200" />
-                  <button onClick={logout} className="p-2 text-slate-400 hover:text-rose-500 transition-colors" title="Logout">
+                <div className="hidden sm:block h-6 w-px bg-slate-200" />
+                <div className="flex items-center gap-2 sm:gap-3 group relative cursor-help">
+                  <div className="flex flex-col items-end hidden md:flex">
+                    <span className="text-[11px] font-bold text-slate-800 leading-none">{user.displayName}</span>
+                    <span className="text-[9px] text-slate-400 mt-1">{user.email}</span>
+                  </div>
+                  <img src={user.photoURL || ''} alt={user.displayName || ''} className="w-8 h-8 sm:w-9 sm:h-9 rounded-full border border-slate-200 shadow-sm" />
+                  
+                  {/* Tooltip for extra confirmation */}
+                  <div className="absolute top-full right-0 mt-2 p-3 bg-white rounded-xl shadow-xl border border-slate-100 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-[60] w-max max-w-[240px]">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600">
+                        <ShieldCheck size={16} />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-800">Sesi Akun Terdeteksi</p>
+                        <p className="text-[10px] text-slate-500">{user.email}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button onClick={logout} className="p-2 text-slate-400 hover:text-rose-500 transition-colors rounded-lg active:bg-rose-50" title="Logout">
                     <LogOut size={18} />
                   </button>
                 </div>
@@ -607,8 +665,8 @@ export default function App() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-10 items-start">
           
           <div className="lg:col-span-4 space-y-6">
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60 p-6 space-y-8 relative">
@@ -759,15 +817,15 @@ export default function App() {
                         exit={{ height: 0, opacity: 0 }}
                         className="overflow-hidden"
                       >
-                        <div className="grid grid-cols-3 gap-2 pb-4 pt-1">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pb-4 pt-1">
                           {PHOTO_TYPES.map(t => (
                             <button
                               key={t.value}
                               onClick={() => setInput({ ...input, photoType: t.value as PhotoType })}
-                              className={`px-3 py-2 text-[11px] rounded-lg border transition-all ${
+                              className={`px-3 py-3 sm:py-2 text-[11px] font-bold rounded-xl border transition-all active:scale-[0.98] ${
                                 input.photoType === t.value 
                                 ? 'bg-slate-900 border-slate-900 text-white shadow-md' 
-                                : 'bg-white border-slate-200 hover:border-slate-300'
+                                : 'bg-white border-slate-200 hover:border-slate-300 text-slate-600'
                               }`}
                             >
                               {t.label}
@@ -805,12 +863,12 @@ export default function App() {
                         exit={{ height: 0, opacity: 0 }}
                         className="overflow-hidden"
                       >
-                        <div className="grid grid-cols-4 gap-2 pb-4 pt-1">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pb-4 pt-1">
                           {ASPECT_RATIO_OPTIONS.map((opt) => (
                             <button
                               key={opt.value}
                               onClick={() => setInput({ ...input, aspectRatio: opt.value as any })}
-                              className={`py-2 px-1 rounded-xl text-[10px] sm:text-[11px] font-bold transition-all border ${
+                              className={`py-3 sm:py-2 px-1 rounded-xl text-[10px] sm:text-[11px] font-bold transition-all border active:scale-[0.98] ${
                                 input.aspectRatio === opt.value
                                 ? 'bg-emerald-600 border-emerald-600 text-white shadow-md'
                                 : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'
@@ -841,7 +899,7 @@ export default function App() {
                         const val = e.target.value;
                         setInput({ ...input, subjectCount: val === '' ? 0 : parseInt(val) });
                       }}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all font-medium"
+                      className="w-full px-3 py-3 sm:py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all font-medium"
                       id="input-subjects"
                     />
                   </div>
@@ -855,7 +913,7 @@ export default function App() {
                       placeholder="e.g. Navy Blue"
                       value={input.outfitColor}
                       onChange={(e) => setInput({ ...input, outfitColor: e.target.value })}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all font-medium"
+                      className="w-full px-3 py-3 sm:py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all font-medium"
                       id="input-outfit"
                     />
                   </div>
@@ -924,7 +982,7 @@ export default function App() {
                     <input 
                       type="text" 
                       placeholder="Input masalah manual... (Tekan Enter)"
-                      className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all font-medium"
+                      className="flex-1 px-3 py-3 sm:py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all font-medium"
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
                           const val = (e.target as HTMLInputElement).value.trim();
@@ -1094,6 +1152,23 @@ export default function App() {
 
           {/* Main Output Area */}
           <div className="lg:col-span-8 space-y-6">
+            {/* User Session Info Card */}
+            <div className="bg-white rounded-2xl p-4 border border-slate-200/60 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600 border border-emerald-100">
+                  <UserIcon size={20} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none mb-1">Ruang Kerja Aktif</p>
+                  <p className="text-sm font-semibold text-slate-700">{user?.displayName || user?.email}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 text-white rounded-lg shadow-sm">
+                <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+                <span className="text-[10px] font-bold uppercase tracking-tight">Sesi Terautentikasi</span>
+              </div>
+            </div>
+
             <AnimatePresence mode="wait">
               {showHistory ? (
                 <motion.div 
@@ -1234,7 +1309,7 @@ export default function App() {
                           <div className="flex items-center gap-3">
                             <button 
                               onClick={(e) => { e.stopPropagation(); copyToClipboard(result.prompt); }}
-                              className="p-2 hover:bg-slate-50 rounded-lg text-slate-400 transition-colors relative group/copy"
+                              className="p-3 sm:p-2 hover:bg-slate-50 rounded-xl text-slate-400 transition-colors relative group/copy active:bg-slate-100"
                               title="Copy Prompt"
                             >
                               {copied ? <Check size={16} className="text-emerald-600" /> : <Copy size={16} />}
@@ -1302,20 +1377,20 @@ export default function App() {
                         <div className="flex items-center justify-between">
                           <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Punya feedback? Sempurnakan hasil:</label>
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
                           <input 
                             type="text"
-                            placeholder="Contoh: 'Buat lighting lebih warm', 'Ganti pose jadi lebih candid'..."
+                            placeholder="Contoh: 'Buat lighting lebih warm'..."
                             value={refinementFeedback}
                             onChange={(e) => setRefinementFeedback(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleRefine()}
-                            className="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+                            className="flex-1 px-4 py-3.5 sm:py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
                             disabled={refining}
                           />
                           <button
                             onClick={handleRefine}
                             disabled={refining || !refinementFeedback.trim()}
-                            className="px-4 py-2 bg-slate-900 text-white rounded-xl text-sm font-bold shadow-lg shadow-slate-200 hover:bg-slate-800 disabled:bg-slate-300 disabled:shadow-none transition-all flex items-center gap-2"
+                            className="w-full sm:w-auto px-6 py-3.5 sm:py-2 bg-slate-900 text-white rounded-xl text-sm font-bold shadow-lg shadow-slate-200 hover:bg-slate-800 disabled:bg-slate-300 disabled:shadow-none transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
                           >
                             {refining ? <RefreshCw className="animate-spin" size={16} /> : <RefreshCw size={16} />}
                             <span>Update</span>
@@ -1368,7 +1443,7 @@ export default function App() {
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="fixed inset-x-4 top-[10%] bottom-[10%] md:inset-x-auto md:left-1/2 md:-translate-x-1/2 md:w-full md:max-w-2xl bg-white rounded-3xl shadow-2xl z-[101] overflow-hidden flex flex-col"
+              className="fixed inset-x-4 top-[5%] bottom-[5%] sm:top-[10%] sm:bottom-[10%] sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 sm:w-full sm:max-w-2xl bg-white rounded-3xl shadow-2xl z-[101] overflow-hidden flex flex-col"
             >
               <div className="p-6 border-b border-slate-100 flex items-center justify-between">
                 <div>
@@ -1463,7 +1538,7 @@ export default function App() {
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="w-full max-w-lg bg-white rounded-3xl shadow-2xl relative z-10 overflow-hidden"
+              className="w-full max-w-lg bg-white rounded-3xl shadow-2xl relative z-10 overflow-hidden mx-auto"
             >
               <div className="p-6 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -1593,7 +1668,16 @@ export default function App() {
                     <Check size={20} />
                     <span>Terapkan Koneksi Privat</span>
                   </button>
-                  <p className="text-center text-[9px] text-slate-400 font-medium">
+                  
+                  <button 
+                    onClick={() => setShowSettings(false)}
+                    className="w-full py-3 bg-white border border-slate-200 text-slate-500 rounded-2xl font-bold hover:bg-slate-50 hover:text-slate-700 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+                  >
+                    <ArrowLeft size={18} />
+                    <span>Kembali ke Menu Utama</span>
+                  </button>
+
+                  <p className="text-center text-[9px] text-slate-400 font-medium pt-1">
                     Sistem akan otomatis menggunakan kunci privat Anda jika tersedia untuk menghindari antrian kuota publik.
                   </p>
                 </div>
