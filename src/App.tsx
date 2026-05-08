@@ -107,6 +107,14 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
+  const getLoadingMessage = () => {
+    if (analyzing) return "Analyzing Image...";
+    if (preparingPrompt) return "Preparing Prompt...";
+    if (loading) return "Generating Masterpiece...";
+    if (refining) return "Refining Result...";
+    return "Please wait...";
+  };
+
   useEffect(() => {
     const savedKeys = localStorage.getItem('photoassist_api_keys');
     if (savedKeys) {
@@ -294,11 +302,6 @@ export default function App() {
   };
 
   const handlePreparePrompt = async () => {
-    if (!user) {
-      alert("Silahkan login untuk melanjutkan.");
-      return;
-    }
-
     setPreparingPrompt(true);
     try {
       const gInput = { ...input, subjectCount: input.subjectCount || 1 };
@@ -318,11 +321,6 @@ export default function App() {
   };
 
   const handleGenerate = async () => {
-    if (!user) {
-      alert("Silahkan login untuk menyimpan history.");
-      return;
-    }
-
     if (!draftPrompt) {
       await handlePreparePrompt();
       return;
@@ -343,52 +341,54 @@ export default function App() {
       
       setResult(res);
 
-      try {
-        // Create a smaller thumbnail specifically for database history
-        let historyImageUrl = '';
-        if (res.imageUrl) {
-          try {
-            historyImageUrl = await createThumbnail(res.imageUrl);
-          } catch (thumbErr) {
-            console.error("Thumbnail failed", thumbErr);
+      if (user) {
+        try {
+          // Create a smaller thumbnail specifically for database history
+          let historyImageUrl = '';
+          if (res.imageUrl) {
+            try {
+              historyImageUrl = await createThumbnail(res.imageUrl);
+            } catch (thumbErr) {
+              console.error("Thumbnail failed", thumbErr);
+            }
           }
-        }
 
-        await addDoc(collection(db, 'generations'), {
-          userId: user.uid,
-          input: gInput,
-          result: {
-            ...res,
-            imageUrl: historyImageUrl // Store ONLY the thumbnail in DB
-          },
-          createdAt: serverTimestamp()
-        });
-
-        // Auto-save as preset
-        const comboExists = [
-          ...PRESETS.map(p => p.config), 
-          ...userPresets.map(up => up.config)
-        ].some(c => 
-          c.photoType === gInput.photoType && 
-          c.targetStyle === gInput.targetStyle && 
-          c.intensity === gInput.intensity
-        );
-
-        if (!comboExists) {
-          const styleLabel = STYLE_OPTIONS.find(s => s.value === gInput.targetStyle)?.label || 'Custom';
-          await addDoc(collection(db, 'user_presets'), {
+          await addDoc(collection(db, 'generations'), {
             userId: user.uid,
-            name: `Preset ${styleLabel}`,
-            config: {
-              photoType: gInput.photoType,
-              targetStyle: gInput.targetStyle,
-              intensity: gInput.intensity
+            input: gInput,
+            result: {
+              ...res,
+              imageUrl: historyImageUrl // Store ONLY the thumbnail in DB
             },
             createdAt: serverTimestamp()
           });
+
+          // Auto-save as preset
+          const comboExists = [
+            ...PRESETS.map(p => p.config), 
+            ...userPresets.map(up => up.config)
+          ].some(c => 
+            c.photoType === gInput.photoType && 
+            c.targetStyle === gInput.targetStyle && 
+            c.intensity === gInput.intensity
+          );
+
+          if (!comboExists) {
+            const styleLabel = STYLE_OPTIONS.find(s => s.value === gInput.targetStyle)?.label || 'Custom';
+            await addDoc(collection(db, 'user_presets'), {
+              userId: user.uid,
+              name: `Preset ${styleLabel}`,
+              config: {
+                photoType: gInput.photoType,
+                targetStyle: gInput.targetStyle,
+                intensity: gInput.intensity
+              },
+              createdAt: serverTimestamp()
+            });
+          }
+        } catch (e) {
+          handleFirestoreError(e, OperationType.CREATE, 'generations');
         }
-      } catch (e) {
-        handleFirestoreError(e, OperationType.CREATE, 'generations');
       }
 
     } catch (error: any) {
@@ -419,26 +419,28 @@ export default function App() {
       setRefinementFeedback('');
 
       // Save refined result to history as well
-      try {
-        let historyImageUrl = '';
-        if (res.imageUrl) {
-          try {
-            historyImageUrl = await createThumbnail(res.imageUrl);
-          } catch (thumbErr) {
-            console.error("Thumbnail failed", thumbErr);
+      if (user) {
+        try {
+          let historyImageUrl = '';
+          if (res.imageUrl) {
+            try {
+              historyImageUrl = await createThumbnail(res.imageUrl);
+            } catch (thumbErr) {
+              console.error("Thumbnail failed", thumbErr);
+            }
           }
+          await addDoc(collection(db, 'generations'), {
+            userId: user.uid,
+            input: input,
+            result: {
+              ...res,
+              imageUrl: historyImageUrl
+            },
+            createdAt: serverTimestamp()
+          });
+        } catch (e) {
+          console.error("Failed to save refined result", e);
         }
-        await addDoc(collection(db, 'generations'), {
-          userId: user?.uid,
-          input: input,
-          result: {
-            ...res,
-            imageUrl: historyImageUrl
-          },
-          createdAt: serverTimestamp()
-        });
-      } catch (e) {
-        console.error("Failed to save refined result", e);
       }
     } catch (error: any) {
       if (error.message === "QUOTA_EXHAUSTED") {
@@ -498,87 +500,6 @@ export default function App() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F8FAFC]">
         <RefreshCw className="animate-spin text-emerald-600" size={32} />
-      </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-[#F8FAFC] flex flex-col items-center justify-center p-4 relative overflow-hidden font-sans">
-        {/* Background decorative elements */}
-        <div className="absolute -top-[10%] -left-[10%] w-[40%] h-[40%] bg-emerald-100/50 rounded-full blur-[120px] pointer-events-none" />
-        <div className="absolute -bottom-[10%] -right-[10%] w-[40%] h-[40%] bg-emerald-100/30 rounded-full blur-[120px] pointer-events-none" />
-        
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="max-w-md w-full bg-white rounded-3xl shadow-2xl shadow-emerald-100/50 border border-slate-100 p-8 relative z-10 text-center"
-        >
-          <div className="w-20 h-20 bg-emerald-600 rounded-3xl mx-auto flex items-center justify-center text-white shadow-xl shadow-emerald-200 rotate-12 mb-8">
-            <Sparkles size={40} />
-          </div>
-          
-          <a 
-            href="https://ais-pre-sww3kxvzp6zypusf5kxk52-517328850702.asia-southeast1.run.app"
-            className="text-3xl font-bold tracking-tight text-slate-900 mb-2 hover:opacity-80 transition-opacity"
-          >
-            PhotoAssist<span className="text-emerald-600">AI</span>
-          </a>
-          <p className="text-slate-500 text-sm leading-relaxed mb-10">
-            Masuk ke ruang kerja pribadi Anda. Semua riwayat, preset, dan pengaturan API key disimpan secara aman untuk akun Anda sendiri.
-          </p>
-
-          <div className="space-y-4">
-            <button 
-              onClick={login}
-              disabled={isLoggingIn}
-              className="w-full flex items-center justify-center gap-3 bg-slate-900 text-white py-4 px-6 rounded-2xl font-bold hover:bg-slate-800 transition-all active:scale-[0.98] shadow-lg shadow-slate-200 disabled:opacity-70 disabled:cursor-not-allowed"
-            >
-              {isLoggingIn ? (
-                <RefreshCw className="animate-spin" size={20} />
-              ) : (
-                <LogIn size={20} />
-              )}
-              <span>{isLoggingIn ? 'Menghubungkan...' : 'Masuk dengan Akun Google Pribadi'}</span>
-            </button>
-            
-            <button 
-              onClick={() => {
-                // If they are on a deep link, this just resets to top
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
-              className="w-full flex items-center justify-center gap-3 bg-white border border-slate-200 text-slate-600 py-3 px-6 rounded-2xl font-medium hover:bg-slate-50 transition-all active:scale-[0.98]"
-            >
-              <ArrowLeft size={18} />
-              <span>Kembali ke Atas</span>
-            </button>
-
-            <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">
-              Secure Auth by Firebase
-            </p>
-          </div>
-
-          <div className="mt-12 grid grid-cols-2 gap-4">
-            <div className="p-4 bg-slate-50 rounded-2xl text-left border border-slate-100">
-              <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-emerald-600 mb-2 shadow-sm">
-                <Camera size={14} />
-              </div>
-              <p className="text-[11px] font-bold text-slate-800">Advanced Presets</p>
-              <p className="text-[9px] text-slate-400 mt-1">Coretan sinematik siap pakai.</p>
-            </div>
-            <div className="p-4 bg-slate-50 rounded-2xl text-left border border-slate-100">
-              <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-emerald-600 mb-2 shadow-sm">
-                <Zap size={14} />
-              </div>
-              <p className="text-[11px] font-bold text-slate-800">AI Analysis</p>
-              <p className="text-[9px] text-slate-400 mt-1">Deteksi masalah secara real-time.</p>
-            </div>
-          </div>
-        </motion.div>
-
-        <footer className="mt-8 text-[11px] text-slate-400 font-medium">
-          PhotoAssistAI © 2024 • Powered by Gemini Pro Vision
-        </footer>
       </div>
     );
   }
@@ -711,7 +632,7 @@ export default function App() {
                       {analyzing && (
                         <div className="absolute inset-0 bg-white/60 backdrop-blur-sm flex flex-col items-center justify-center gap-3">
                           <RefreshCw className="animate-spin text-emerald-600" size={32} />
-                          <span className="text-xs font-bold text-emerald-700 uppercase tracking-widest animate-pulse">Menganalisa Foto...</span>
+                          <span className="text-xs font-bold text-emerald-700 uppercase tracking-widest animate-pulse">{getLoadingMessage()}</span>
                         </div>
                       )}
                     </div>
@@ -1110,7 +1031,7 @@ export default function App() {
                   {loading || analyzing || preparingPrompt ? (
                     <>
                       <RefreshCw size={20} className="animate-spin" />
-                      <span>{analyzing ? 'Menganalisa Foto...' : preparingPrompt ? 'Menyiapkan Smart Prompt...' : 'Sedang Generate...'}</span>
+                      <span>{getLoadingMessage()}</span>
                     </>
                   ) : (
                     <>
@@ -1160,13 +1081,15 @@ export default function App() {
                   <UserIcon size={20} />
                 </div>
                 <div>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none mb-1">Ruang Kerja Aktif</p>
-                  <p className="text-sm font-semibold text-slate-700">{user?.displayName || user?.email}</p>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none mb-1">Ruang Kerja</p>
+                  <p className="text-sm font-semibold text-slate-700">{user ? (user.displayName || user.email) : 'Sesi Guest'}</p>
                 </div>
               </div>
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 text-white rounded-lg shadow-sm">
-                <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
-                <span className="text-[10px] font-bold uppercase tracking-tight">Sesi Terautentikasi</span>
+              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg shadow-sm ${user ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                <div className={`w-1.5 h-1.5 rounded-full ${user ? 'bg-white animate-pulse' : 'bg-slate-400'}`} />
+                <span className="text-[10px] font-bold uppercase tracking-tight">
+                  {user ? 'Sesi Terautentikasi' : 'Sesi Terbatas (Tanpa History)'}
+                </span>
               </div>
             </div>
 
@@ -1419,8 +1342,8 @@ export default function App() {
                             disabled={refining || !refinementFeedback.trim()}
                             className="w-full sm:w-auto px-6 py-3.5 sm:py-2 bg-slate-900 text-white rounded-xl text-sm font-bold shadow-lg shadow-slate-200 hover:bg-slate-800 disabled:bg-slate-300 disabled:shadow-none transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
                           >
-                            {refining ? <RefreshCw className="animate-spin" size={16} /> : <RefreshCw size={16} />}
-                            <span>Update</span>
+                            <RefreshCw className={refining ? "animate-spin" : ""} size={16} />
+                            <span>{refining ? "Refining..." : "Update"}</span>
                           </button>
                         </div>
                       </div>
