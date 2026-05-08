@@ -1,6 +1,8 @@
 import { GeminiProvider } from "./providers/gemini";
 import { GroqProvider } from "./providers/groq";
 import { OpenRouterProvider } from "./providers/openrouter";
+import { OpenAIProvider } from "./providers/openai";
+import { TogetherProvider } from "./providers/together";
 import { AIProvider, AIProviderName, AIResponse, RouterConfig } from "./types";
 import { aiRateLimiter } from "./limits";
 
@@ -10,9 +12,19 @@ export class AIRouter {
 
   constructor(config: RouterConfig) {
     this.config = config;
-    this.providers.set('gemini', new GeminiProvider());
-    this.providers.set('groq', new GroqProvider());
-    this.providers.set('openrouter', new OpenRouterProvider());
+    this.initProviders();
+  }
+
+  private initProviders(userKeys?: Partial<Record<AIProviderName, string>>) {
+    this.providers.set('gemini', new GeminiProvider(userKeys?.gemini));
+    this.providers.set('groq', new GroqProvider(userKeys?.groq));
+    this.providers.set('openrouter', new OpenRouterProvider(userKeys?.openrouter));
+    this.providers.set('openai', new OpenAIProvider(userKeys?.openai));
+    this.providers.set('together', new TogetherProvider(userKeys?.together));
+  }
+
+  updateUserKeys(keys: Partial<Record<AIProviderName, string>>) {
+    this.initProviders(keys);
   }
 
   async generateText(prompt: string, images?: string[]): Promise<AIResponse> {

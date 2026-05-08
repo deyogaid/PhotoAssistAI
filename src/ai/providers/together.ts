@@ -1,31 +1,29 @@
 import { AIProvider, AIResponse } from "../types";
 
-export class OpenRouterProvider implements AIProvider {
-  name: "openrouter" = "openrouter";
+export class TogetherProvider implements AIProvider {
+  name: "together" = "together";
   private apiKey: string;
 
   constructor(apiKey?: string) {
-    this.apiKey = apiKey || process.env.OPENROUTER_API_KEY || "";
+    this.apiKey = apiKey || process.env.TOGETHER_API_KEY || "";
   }
 
   async generateText(prompt: string, images?: string[]): Promise<AIResponse> {
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const response = await fetch("https://api.together.xyz/v1/chat/completions", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${this.apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": window.location.origin,
-        "X-Title": "PhotoAssistAI"
+        "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        model: "google/gemini-2.0-flash-001",
+        model: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
         messages: [{ role: "user", content: prompt }]
       })
     });
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(`OpenRouter API Error: ${error?.error?.message || response.statusText}`);
+      throw new Error(`Together AI Error: ${error?.error?.message || response.statusText}`);
     }
 
     const data = await response.json();

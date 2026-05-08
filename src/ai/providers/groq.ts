@@ -4,8 +4,8 @@ export class GroqProvider implements AIProvider {
   name: "groq" = "groq";
   private apiKey: string;
 
-  constructor() {
-    this.apiKey = process.env.GROQ_API_KEY || "";
+  constructor(apiKey?: string) {
+    this.apiKey = apiKey || process.env.GROQ_API_KEY || "";
   }
 
   async generateText(prompt: string, images?: string[]): Promise<AIResponse> {

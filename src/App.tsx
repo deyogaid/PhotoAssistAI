@@ -24,10 +24,16 @@ import {
   LogOut,
   LogIn,
   Maximize,
-  Trash2
+  Trash2,
+  Settings,
+  Lock,
+  ExternalLink,
+  ShieldCheck
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { PromptInput, GenerationResult, PhotoType } from './types';
+import { AIProviderName } from './ai/types';
+import { aiRouter } from './ai/router';
 import { 
   PRESETS, 
   PHOTO_TYPES, 
@@ -93,6 +99,28 @@ export default function App() {
   const [draftPrompt, setDraftPrompt] = useState('');
   const [draftDirection, setDraftDirection] = useState('');
   const [preparingPrompt, setPreparingPrompt] = useState(false);
+
+  const [userApiKeys, setUserApiKeys] = useState<Partial<Record<AIProviderName, string>>>({});
+  const [showSettings, setShowSettings] = useState(false);
+
+  useEffect(() => {
+    const savedKeys = localStorage.getItem('photoassist_api_keys');
+    if (savedKeys) {
+      try {
+        const parsed = JSON.parse(savedKeys);
+        setUserApiKeys(parsed);
+        aiRouter.updateUserKeys(parsed);
+      } catch (e) {
+        console.error("Failed to load keys", e);
+      }
+    }
+  }, []);
+
+  const saveApiKeys = (keys: Partial<Record<AIProviderName, string>>) => {
+    setUserApiKeys(keys);
+    localStorage.setItem('photoassist_api_keys', JSON.stringify(keys));
+    aiRouter.updateUserKeys(keys);
+  };
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
@@ -209,12 +237,18 @@ export default function App() {
             conditions: mergedConditions
           };
         });
-        // System updates fields automatically based on analysis
-        // Auto-generation is removed to allow manual review as per user request
+        
+        // Auto-trigger prompt preparation for better efficiency/lazy-user support
+        if (base64) {
+          // Wrap in a timeout to ensure state has updated
+          setTimeout(() => {
+            handlePreparePrompt();
+          }, 500);
+        }
       } catch (error: any) {
         console.error("Analysis failed", error);
         if (error.message === "QUOTA_EXHAUSTED") {
-          alert("Batas penggunaan gratis (quota) Anda telah habis untuk saat ini. Mohon tunggu beberapa saat atau coba lagi besok.");
+          alert("Batas penggunaan gratis (quota) Anda telah habis. Mohon tunggu beberapa saat, atau gunakan 'GPT Auth' di menu atas untuk menghubungkan akun privat Anda.");
         } else {
           alert("Gagal menganalisa gambar. Pastikan format benar.");
         }
@@ -256,7 +290,7 @@ export default function App() {
     } catch (error: any) {
       console.error("Prompt preparation failed", error);
       if (error.message === "QUOTA_EXHAUSTED") {
-        alert("Batas penggunaan gratis (quota) Anda telah habis untuk saat ini. Mohon tunggu beberapa saat atau coba lagi besok.");
+        alert("Batas penggunaan gratis (quota) Anda telah habis. Mohon tunggu beberapa saat, atau gunakan 'GPT Auth' di menu atas untuk menghubungkan akun privat Anda.");
       } else {
         alert("Gagal menyiapkan prompt. Coba lagi.");
       }
@@ -341,7 +375,7 @@ export default function App() {
 
     } catch (error: any) {
       if (error.message === "QUOTA_EXHAUSTED") {
-        alert("Batas penggunaan gratis (quota) Anda telah habis untuk saat ini. Mohon tunggu beberapa saat atau coba lagi besok.");
+        alert("Batas penggunaan gratis (quota) Anda telah habis. Mohon tunggu beberapa saat, atau gunakan 'GPT Auth' di menu atas untuk menghubungkan akun privat Anda.");
       } else {
         alert("Terjadi kesalahan saat generate image. Mohon coba lagi.");
       }
@@ -390,7 +424,7 @@ export default function App() {
       }
     } catch (error: any) {
       if (error.message === "QUOTA_EXHAUSTED") {
-        alert("Batas penggunaan gratis (quota) Anda telah habis untuk saat ini. Mohon tunggu beberapa saat atau coba lagi besok.");
+        alert("Batas penggunaan gratis (quota) Anda telah habis. Mohon tunggu beberapa saat, atau gunakan 'GPT Auth' di menu atas untuk menghubungkan akun privat Anda.");
       } else {
         alert("Gagal memperbarui hasil.");
       }
@@ -466,9 +500,12 @@ export default function App() {
             <Sparkles size={40} />
           </div>
           
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900 mb-2">
+          <a 
+            href="https://ais-pre-sww3kxvzp6zypusf5kxk52-517328850702.asia-southeast1.run.app"
+            className="text-3xl font-bold tracking-tight text-slate-900 mb-2 hover:opacity-80 transition-opacity"
+          >
             PhotoAssist<span className="text-emerald-600">AI</span>
-          </h1>
+          </a>
           <p className="text-slate-500 text-sm leading-relaxed mb-10">
             Tingkatkan kualitas foto Anda dengan AI cerdas. Deteksi otomatis, gaya preset sinematik, dan koreksi pencahayaan instan.
           </p>
@@ -520,10 +557,24 @@ export default function App() {
             <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center text-white shadow-lg shadow-emerald-200">
               <Sparkles size={18} />
             </div>
-            <span className="font-bold text-xl tracking-tight text-slate-800">PhotoAssist<span className="text-emerald-600">AI</span></span>
+            <a 
+              href="https://ais-pre-sww3kxvzp6zypusf5kxk52-517328850702.asia-southeast1.run.app"
+              className="font-bold text-xl tracking-tight text-slate-800 hover:opacity-80 transition-opacity"
+            >
+              PhotoAssist<span className="text-emerald-600">AI</span>
+            </a>
           </div>
           
           <div className="flex items-center gap-4">
+            <button 
+              onClick={() => setShowSettings(true)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition-all"
+              title="AI Settings"
+            >
+              <ShieldCheck size={18} className={Object.values(userApiKeys).some(v => !!v) ? 'text-emerald-600' : 'text-slate-400'} />
+              <span className="hidden sm:inline">GPT Auth</span>
+            </button>
+            <div className="h-6 w-px bg-slate-200" />
             {user ? (
               <div className="flex items-center gap-4">
                 <button 
@@ -1394,6 +1445,161 @@ export default function App() {
               <p className="text-[10px] text-slate-400">File High Definition telah disimpan ke perangkat Anda.</p>
             </div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* AI Integration Hub Modal */}
+      <AnimatePresence>
+        {showSettings && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowSettings(false)}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="w-full max-w-lg bg-white rounded-3xl shadow-2xl relative z-10 overflow-hidden"
+            >
+              <div className="p-6 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-emerald-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-emerald-100">
+                    <ShieldCheck size={24} />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-900">AI Integration Hub</h2>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Secure GPT Authentication</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setShowSettings(false)}
+                  className="p-2 hover:bg-white rounded-full text-slate-400 hover:text-slate-600 transition-all"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="p-8 space-y-8">
+                <div className="p-4 bg-emerald-50/50 border border-emerald-100 rounded-2xl flex items-start gap-4">
+                  <div className="p-2 bg-white rounded-xl shadow-sm text-emerald-600">
+                    <Lock size={18} />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs font-bold text-emerald-900">Privasi Akun Publik</p>
+                    <p className="text-[11px] text-emerald-700/70 leading-relaxed">
+                      Terhubung dengan layanan AI publik menggunakan API Key Anda sendiri. Data kunci disimpan secara lokal di browser Anda untuk keamanan maksimal dan akses tanpa batas.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-6">
+                  {/* OpenAI / ChatGPT Section */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 flex items-center justify-center bg-slate-900 text-white rounded-lg">
+                          <Zap size={16} />
+                        </div>
+                        <span className="text-sm font-bold text-slate-800">OpenAI (ChatGPT)</span>
+                      </div>
+                      <a 
+                        href="https://platform.openai.com/api-keys" 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-[10px] text-emerald-600 font-bold hover:underline flex items-center gap-1"
+                      >
+                        Dapatkan Key <ExternalLink size={10} />
+                      </a>
+                    </div>
+                    <div className="relative">
+                      <input 
+                        type="password"
+                        placeholder="sk-..."
+                        value={userApiKeys.openai || ''}
+                        onChange={(e) => saveApiKeys({ ...userApiKeys, openai: e.target.value })}
+                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  {/* OpenRouter Section */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 flex items-center justify-center bg-slate-100 text-slate-800 rounded-lg">
+                          <Sparkles size={16} />
+                        </div>
+                        <span className="text-sm font-bold text-slate-800">OpenRouter (Full Access)</span>
+                      </div>
+                      <a 
+                        href="https://openrouter.ai/keys" 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-[10px] text-emerald-600 font-bold hover:underline flex items-center gap-1"
+                      >
+                        Dapatkan Key <ExternalLink size={10} />
+                      </a>
+                    </div>
+                    <div className="relative">
+                      <input 
+                        type="password"
+                        placeholder="sk-or-v1-..."
+                        value={userApiKeys.openrouter || ''}
+                        onChange={(e) => saveApiKeys({ ...userApiKeys, openrouter: e.target.value })}
+                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Together AI Section */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 flex items-center justify-center bg-blue-50 text-blue-600 rounded-lg">
+                          <Wind size={16} />
+                        </div>
+                        <span className="text-sm font-bold text-slate-800">Together AI (Open Models)</span>
+                      </div>
+                      <a 
+                        href="https://api.together.xyz/settings/api-keys" 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-[10px] text-emerald-600 font-bold hover:underline flex items-center gap-1"
+                      >
+                        Dapatkan Key <ExternalLink size={10} />
+                      </a>
+                    </div>
+                    <div className="relative">
+                      <input 
+                        type="password"
+                        placeholder="Together API Key..."
+                        value={userApiKeys.together || ''}
+                        onChange={(e) => saveApiKeys({ ...userApiKeys, together: e.target.value })}
+                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all font-mono"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-4 flex flex-col gap-3">
+                  <button 
+                    onClick={() => setShowSettings(false)}
+                    className="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all active:scale-[0.98] shadow-lg shadow-slate-200 flex items-center justify-center gap-2"
+                  >
+                    <Check size={20} />
+                    <span>Terapkan Koneksi Privat</span>
+                  </button>
+                  <p className="text-center text-[9px] text-slate-400 font-medium">
+                    Sistem akan otomatis menggunakan kunci privat Anda jika tersedia untuk menghindari antrian kuota publik.
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
 

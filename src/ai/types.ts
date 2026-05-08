@@ -1,4 +1,4 @@
-export type AIProviderName = 'gemini' | 'groq' | 'openrouter' | 'together';
+export type AIProviderName = 'gemini' | 'groq' | 'openrouter' | 'together' | 'openai';
 
 export interface AIResponse {
   text: string;

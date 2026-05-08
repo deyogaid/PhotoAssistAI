@@ -5,9 +5,9 @@ export class GeminiProvider implements AIProvider {
   name: "gemini" = "gemini";
   private genAI: GoogleGenAI;
 
-  constructor() {
+  constructor(apiKey?: string) {
     // @ts-ignore
-    this.genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+    this.genAI = new GoogleGenAI({ apiKey: apiKey || process.env.GEMINI_API_KEY || "" });
   }
 
   async generateText(prompt: string, images?: string[]): Promise<AIResponse> {
@@ -25,13 +25,14 @@ export class GeminiProvider implements AIProvider {
       }
     }
 
+    // Use ai.models.generateContent as required by SDK
     // @ts-ignore
-    const result = await this.genAI.models.generateContent({
-      model: "gemini-1.5-flash",
-      contents: [{ parts }]
+    const response = await this.genAI.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: { parts }
     });
 
-    const text = result.text || "";
+    const text = response.text || "";
 
     return {
       text,
