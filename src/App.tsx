@@ -30,7 +30,8 @@ import {
   ExternalLink,
   ShieldCheck,
   ArrowLeft,
-  User as UserIcon
+  User as UserIcon,
+  MessageSquare
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { PromptInput, GenerationResult, PhotoType } from './types';
@@ -1307,6 +1308,32 @@ export default function App() {
                             <span className="text-xs font-bold uppercase tracking-widest text-emerald-600">Smart Prompt Output</span>
                           </div>
                           <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2 border-l border-slate-200 pl-3">
+                              <button 
+                                onClick={(e) => { 
+                                  e.stopPropagation(); 
+                                  copyToClipboard(result.prompt);
+                                  window.open('https://chatgpt.com', '_blank');
+                                }}
+                                className="p-2 hover:bg-emerald-50 rounded-lg text-slate-400 hover:text-emerald-600 transition-colors relative group/gpt"
+                                title="Open in ChatGPT"
+                              >
+                                <MessageSquare size={16} />
+                                <span className="absolute bottom-full right-0 mb-2 px-2 py-1 bg-slate-900 text-white text-[10px] rounded opacity-0 group-hover/gpt:opacity-100 whitespace-nowrap pointer-events-none">Copy & Open ChatGPT</span>
+                              </button>
+                              <button 
+                                onClick={(e) => { 
+                                  e.stopPropagation(); 
+                                  copyToClipboard(result.prompt);
+                                  window.open('https://gemini.google.com', '_blank');
+                                }}
+                                className="p-2 hover:bg-blue-50 rounded-lg text-slate-400 hover:text-blue-600 transition-colors relative group/gemini"
+                                title="Open in Gemini"
+                              >
+                                <ImageIcon size={16} />
+                                <span className="absolute bottom-full right-0 mb-2 px-2 py-1 bg-slate-900 text-white text-[10px] rounded opacity-0 group-hover/gemini:opacity-100 whitespace-nowrap pointer-events-none">Copy & Open Gemini (Visual)</span>
+                              </button>
+                            </div>
                             <button 
                               onClick={(e) => { e.stopPropagation(); copyToClipboard(result.prompt); }}
                               className="p-3 sm:p-2 hover:bg-slate-50 rounded-xl text-slate-400 transition-colors relative group/copy active:bg-slate-100"
